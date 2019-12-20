@@ -39,11 +39,31 @@ import javax.swing.event.TableModelListener;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellEditor;
 
+import bdv.util.BdvOptions;
+import bdv.util.BdvStackSource;
+import bdv.util.RandomAccessibleIntervalMipmapSource;
+import bdv.util.volatiles.SharedQueue;
+import ch.systemsx.cisd.hdf5.HDF5Factory;
+import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import mpicbg.spim.data.SpimData;
 import mpicbg.spim.data.XmlIoSpimData;
 import mpicbg.spim.data.registration.ViewTransformAffine;
+import mpicbg.spim.data.sequence.FinalVoxelDimensions;
+import net.imglib2.*;
+import net.imglib2.converter.Converters;
+import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
+import net.imglib2.realtransform.*;
+import net.imglib2.type.numeric.integer.UnsignedByteType;
+import net.imglib2.type.numeric.real.DoubleType;
+import net.imglib2.view.SubsampleIntervalView;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+import org.janelia.saalfeldlab.hotknife.FlattenTransform;
+import org.janelia.saalfeldlab.hotknife.util.Show;
+import org.janelia.saalfeldlab.hotknife.util.Transform;
+import org.janelia.saalfeldlab.n5.N5FSReader;
+import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
+import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.utility.ui.RepeatingReleasedEventsFixer;
 import org.jdom2.Document;
 import org.jdom2.Element;
@@ -124,23 +144,12 @@ import mpicbg.models.TranslationModel2D;
 import mpicbg.models.TranslationModel3D;
 import mpicbg.spim.data.SpimDataException;
 import mpicbg.spim.data.sequence.VoxelDimensions;
-import net.imglib2.Interval;
-import net.imglib2.RandomAccessibleInterval;
-import net.imglib2.RealLocalizable;
-import net.imglib2.RealPoint;
-import net.imglib2.RealPositionable;
 import net.imglib2.display.RealARGBColorConverter;
 import net.imglib2.histogram.DiscreteFrequencyDistribution;
 import net.imglib2.histogram.Histogram1d;
 import net.imglib2.histogram.Real1dBinMapper;
 import net.imglib2.img.imageplus.FloatImagePlus;
 import net.imglib2.img.imageplus.ImagePlusImgs;
-import net.imglib2.realtransform.AffineTransform;
-import net.imglib2.realtransform.AffineTransform3D;
-import net.imglib2.realtransform.InverseRealTransform;
-import net.imglib2.realtransform.InvertibleRealTransform;
-import net.imglib2.realtransform.ThinplateSplineTransform;
-import net.imglib2.realtransform.Wrapped2DTransformAs3D;
 import net.imglib2.realtransform.inverse.WrappedIterativeInvertibleRealTransform;
 import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.integer.UnsignedShortType;
@@ -2450,100 +2459,6 @@ public class BigWarp< T >
 		return ndims;
 	}
 
-	public static void main( final String[] args )
-	{
-		new ImageJ();
-
-		// TODO main
-		String fnP = "";
-		String fnQ = "";
-		String fnLandmarks = "";
-
-		int i = 0;
-		if ( args.length >= 2 )
-		{
-			fnP = args[ i++ ];
-			fnQ = args[ i++ ];
-		}
-		else
-		{
-			System.err.println( "Must provide at least 2 inputs for moving and target image files" );
-			System.exit( 1 );
-		}
-
-		if ( args.length > i )
-			fnLandmarks = args[ i++ ];
-
-		boolean doInverse = false;
-		if ( args.length > i )
-		{
-			try
-			{
-				doInverse = Boolean.parseBoolean( args[ i++ ] );
-				System.out.println( "parsed inverse param: " + doInverse );
-			}
-			catch ( final Exception e )
-			{
-				// no inverse param
-				System.err.println( "Warning: Failed to parse inverse parameter." );
-			}
-		}
-
-		try
-		{
-			System.setProperty( "apple.laf.useScreenMenuBar", "false" );
-
-
-			ProgressWriterIJ progress = new ProgressWriterIJ();
-			BigWarp bw;
-			if ( fnP.endsWith( "xml" ) && fnQ.endsWith( "xml" ) )
-				bw = new BigWarp( BigWarpInit.createBigWarpDataFromXML( fnP, fnQ ), new File( fnP ).getName(), progress );
-			else if ( fnP.endsWith( "xml" ) && !fnQ.endsWith( "xml" ) )
-			{
-				final ImagePlus impQ = IJ.openImage( fnQ );
-				bw = new BigWarp( BigWarpInit.createBigWarpDataFromXMLImagePlus( fnP, impQ ),
-						 new File( fnP ).getName(), progress );
-			}
-			else if ( !fnP.endsWith( "xml" ) && fnQ.endsWith( "xml" ) )
-			{
-				final ImagePlus impP = IJ.openImage( fnP );
-				bw = new BigWarp( BigWarpInit.createBigWarpDataFromImagePlusXML( impP, fnQ ),
-						 new File( fnP ).getName(), progress );
-			}
-			else
-			{
-				final ImagePlus impP = IJ.openImage( fnP );
-				final ImagePlus impQ = IJ.openImage( fnQ );
-
-				if ( !( impP == null || impQ == null ) )
-				{
-					BigWarpData bwdata = BigWarpInit.createBigWarpDataFromImages( impP, impQ );
-
-					bw = new BigWarp( bwdata, new File( fnP ).getName(), progress );
-				}
-				else
-				{
-					System.err.println( "Error reading images" );
-					return;
-				}
-			}
-
-
-			if ( !fnLandmarks.isEmpty() )
-				bw.getLandmarkPanel().getTableModel().load( new File( fnLandmarks ) );
-
-			if ( doInverse )
-				bw.invertPointCorrespondences();
-
-		}
-		catch ( final Exception e )
-		{
-
-			e.printStackTrace();
-		}
-
-		System.out.println( "done" );
-	}
 
 	public void checkBoxInputMaps()
 	{
@@ -3562,4 +3477,209 @@ public class BigWarp< T >
 		viewerFrameP.repaint();
 		viewerFrameQ.repaint();
 	}
+
+
+	public static void main( final String[] args ) throws IOException, SpimDataException {
+		new ImageJ();
+
+		/* parameterize with picocli */
+		double minY = 1189.986083984375;
+		double maxY = 4233.8876953125;
+
+		long padding = 2000;
+
+		//@Option(names = {"--minFaceFile"}, required = false, description = "HDF5 file with min face, e.g. --minFaceFile /nrs/flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5")
+		String minFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5";
+
+		String maxFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-top.h5";
+		String rawN5 = "/groups/cardona/home/harringtonk/nrs_flyem/render/n5/Z1217_19m/Sec04/stacks";
+		String datasetName = "/v1_1_affine_filtered_1_26365___20191217_153959";
+
+		double transformScaleX = 1;
+		double transformScaleY = 1;
+
+		boolean useVolatile = true;
+
+		FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", new double[]{1, 1, 1});
+
+		final N5FSReader n5 = new N5FSReader(rawN5);
+
+		String fnLandmarks = "";
+
+		/*
+		 * transformation
+		 */
+		final IHDF5Reader hdf5ReaderMax = HDF5Factory.openForReading(maxFaceFile);
+		final IHDF5Reader hdf5ReaderMin = HDF5Factory.openForReading(minFaceFile);
+//		final IHDF5Reader hdf5ReaderTop = HDF5Factory.openForReading("/home/saalfeld/projects/flyem/Sec04-top.h5");
+//		final IHDF5Reader hdf5ReaderBot = HDF5Factory.openForReading("/home/saalfeld/projects/flyem/Sec04-bottom.h5");
+		final N5HDF5Reader hdf5Max = new N5HDF5Reader(hdf5ReaderMax, new int[] {128, 128, 128});
+		final N5HDF5Reader hdf5Min = new N5HDF5Reader(hdf5ReaderMin, new int[] {128, 128, 128});
+
+		System.out.println(Arrays.toString(hdf5Max.listAttributes("/").keySet().toArray()));
+		System.out.println(hdf5Max.getDatasetAttributes("/volume").getDataType());
+
+		final RandomAccessibleInterval<FloatType> maxFloats = N5Utils.openVolatile(hdf5Max, "/volume");
+		final RandomAccessibleInterval<FloatType> minFloats = N5Utils.openVolatile(hdf5Min, "/volume");
+
+		final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxFloats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+		final RandomAccessibleInterval<DoubleType> min = Converters.convert(minFloats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+
+		final Scale2D transformScale = new Scale2D(transformScaleX, transformScaleY);
+
+		final FlattenTransform ft = new FlattenTransform(
+				RealViews.affine(
+						Views.interpolate(
+								Views.extendBorder(min),
+								new NLinearInterpolatorFactory<>()),
+						transformScale),
+				RealViews.affine(
+						Views.interpolate(
+								Views.extendBorder(max),
+								new NLinearInterpolatorFactory<>()),
+						transformScale),
+				minY,
+				maxY);
+
+		/*
+		 * raw data
+		 */
+		final int numProc = Runtime.getRuntime().availableProcessors();
+		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
+
+
+
+		final long[] dimensions = n5.getDatasetAttributes(datasetName + "/s0").getDimensions();
+
+		final FinalInterval cropInterval = new FinalInterval(
+				new long[] {0, 0, Math.round(minY) - padding},
+				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxY) + padding});
+
+		final int numScales = n5.list(datasetName).length;
+
+		@SuppressWarnings("unchecked")
+		final RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = new RandomAccessibleInterval[numScales];
+
+		@SuppressWarnings("unchecked")
+		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsFlat = new RandomAccessibleInterval[numScales];
+		@SuppressWarnings("unchecked")
+		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsOriginal = new RandomAccessibleInterval[numScales];
+
+		final double[][] scales = new double[numScales][];
+
+		/*
+		 * raw pixels for mipmap level
+		 * can be reused when transformation updates
+		 */
+		for (int s = 0; s < numScales; ++s) {
+
+			/* TODO read downsamplingFactors */
+			final int scale = 1 << s;
+			final double inverseScale = 1.0 / scale;
+
+			rawMipmaps[s] =
+					N5Utils.openVolatile(
+							n5,
+							datasetName + "/s" + s);
+		}
+
+
+		BdvStackSource<?> bdvFlat = null;
+		BdvStackSource<?> bdvOriginal = null;
+
+		/*
+		 * transform, everything below needs update when transform changes
+		 */
+		for (int s = 0; s < numScales; ++s) {
+
+			/* TODO read downsamplingFactors */
+			final int scale = 1 << s;
+			final double inverseScale = 1.0 / scale;
+
+			final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
+			final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
+			final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
+			transformSequenceFlat.add(shift);
+			transformSequenceFlat.add(ft.inverse());
+			transformSequenceFlat.add(shift.inverse());
+			transformSequenceFlat.add(scale3D);
+
+			final RandomAccessibleInterval<UnsignedByteType> flatSource =
+					Transform.createTransformedInterval(
+							Views.permute(rawMipmaps[s], 1, 2),
+							cropInterval,
+							transformSequenceFlat,
+							new UnsignedByteType(0));
+			final RandomAccessibleInterval<UnsignedByteType> originalSource =
+					Transform.createTransformedInterval(
+							Views.permute(rawMipmaps[s], 1, 2),
+							cropInterval,
+							scale3D,
+							new UnsignedByteType(0));
+
+			final SubsampleIntervalView<UnsignedByteType> subsampledFlatSource = Views.subsample(flatSource, scale);
+			final RandomAccessibleInterval<UnsignedByteType> cachedFlatSource = Show.wrapAsVolatileCachedCellImg(subsampledFlatSource, new int[]{32, 32, 32});
+
+			final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
+			final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
+
+			mipmapsFlat[s] = cachedFlatSource;
+			mipmapsOriginal[s] = cachedOriginalSource;
+			scales[s] = new double[]{scale, scale, scale};
+		}
+
+		/*
+		 * update when transforms change
+		 */
+		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceFlat =
+				new RandomAccessibleIntervalMipmapSource<>(
+						mipmapsFlat,
+						new UnsignedByteType(),
+						scales,
+						voxelDimensions,
+						datasetName);
+		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceOriginal =
+				new RandomAccessibleIntervalMipmapSource<>(
+						mipmapsOriginal,
+						new UnsignedByteType(),
+						scales,
+						voxelDimensions,
+						datasetName);
+
+		final Source<?> volatileMipmapSourceFlat;
+		final Source<?> volatileMipmapSourceOriginal;
+		if (useVolatile) {
+			volatileMipmapSourceFlat = mipmapSourceFlat.asVolatile(queue);
+			volatileMipmapSourceOriginal = mipmapSourceOriginal.asVolatile(queue);
+		} else {
+			volatileMipmapSourceFlat = mipmapSourceFlat;
+			volatileMipmapSourceOriginal = mipmapSourceOriginal;
+		}
+
+		ProgressWriterIJ progress = new ProgressWriterIJ();
+
+		BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{volatileMipmapSourceFlat},
+				new Source[]{volatileMipmapSourceOriginal},
+				new String[]{"Flat", "Original"});
+
+		BigWarp bw;
+		bw = new BigWarp( bwData, new File( rawN5 ).getName(), progress );
+
+		if ( !fnLandmarks.isEmpty() )
+			bw.getLandmarkPanel().getTableModel().load( new File( fnLandmarks ) );
+
+
+
+//		bdvFlat = Show.mipmapSource(volatileMipmapSourceFlat, bdvFlat, BdvOptions.options().screenScales(new double[] {0.5}).numRenderingThreads(10).frameTitle("Flattened"));
+//		bdvOriginal = Show.mipmapSource(volatileMipmapSourceOriginal, bdvOriginal, BdvOptions.options().screenScales(new double[] {0.5}).numRenderingThreads(10).frameTitle("Original"));
+
+		//System.setProperty( "apple.laf.useScreenMenuBar", "false" );
+
+
+
+//		if ( doInverse )
+//			bw.invertPointCorrespondences();
+
+	}
+
 }
