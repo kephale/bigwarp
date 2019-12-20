@@ -755,7 +755,7 @@ public class BigWarpInit
 	/**
 	 * Create a {@link String} array of names from two {@link ImagePlus}es,
 	 * essentially concatenating the results from calling
-	 * {@link namesFromImagePlus} with each.
+	 * namesFromImagePlus with each.
 	 *
 	 * @param impP
 	 *            first image to generate names from

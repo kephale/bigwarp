@@ -2453,7 +2453,7 @@ public class BigWarp< T >
 	public static void main( final String[] args )
 	{
 		new ImageJ();
-		
+
 		// TODO main
 		String fnP = "";
 		String fnQ = "";
@@ -2518,7 +2518,7 @@ public class BigWarp< T >
 				if ( !( impP == null || impQ == null ) )
 				{
 					BigWarpData bwdata = BigWarpInit.createBigWarpDataFromImages( impP, impQ );
-					
+
 					bw = new BigWarp( bwdata, new File( fnP ).getName(), progress );
 				}
 				else
@@ -2528,7 +2528,7 @@ public class BigWarp< T >
 				}
 			}
 
-			
+
 			if ( !fnLandmarks.isEmpty() )
 				bw.getLandmarkPanel().getTableModel().load( new File( fnLandmarks ) );
 
