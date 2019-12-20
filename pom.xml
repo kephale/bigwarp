@@ -158,10 +158,18 @@
 			<groupId>info.picocli</groupId>
 			<artifactId>picocli</artifactId>
 		</dependency>
+<!--		<dependency>-->
+<!--			<groupId>com.github.saalfeldlab</groupId>-->
+<!--			<artifactId>hot-knife</artifactId>-->
+<!--			<version>26915b3</version>-->
+<!--		</dependency>-->
 		<dependency>
-			<groupId>com.github.saalfeldlab</groupId>
-			<artifactId>hot-knife</artifactId>
-			<version>26915b3</version>
+			<groupId>mpicbg</groupId>
+			<artifactId>mpicbg_</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>mpicbg</groupId>
+			<artifactId>mpicbg</artifactId>
 		</dependency>
 
 		<dependency>
