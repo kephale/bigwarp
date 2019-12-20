@@ -3498,7 +3498,7 @@ public class BigWarp< T >
 		double transformScaleX = 1;
 		double transformScaleY = 1;
 
-		boolean useVolatile = true;
+		boolean useVolatile = false;
 
 		FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", new double[]{1, 1, 1});
 
@@ -3513,8 +3513,8 @@ public class BigWarp< T >
 		final IHDF5Reader hdf5ReaderMin = HDF5Factory.openForReading(minFaceFile);
 //		final IHDF5Reader hdf5ReaderTop = HDF5Factory.openForReading("/home/saalfeld/projects/flyem/Sec04-top.h5");
 //		final IHDF5Reader hdf5ReaderBot = HDF5Factory.openForReading("/home/saalfeld/projects/flyem/Sec04-bottom.h5");
-		final N5HDF5Reader hdf5Max = new N5HDF5Reader(hdf5ReaderMax, new int[] {128, 128, 128});
-		final N5HDF5Reader hdf5Min = new N5HDF5Reader(hdf5ReaderMin, new int[] {128, 128, 128});
+		final N5HDF5Reader hdf5Max = new N5HDF5Reader(hdf5ReaderMax, new int[] {128, 128, 1});
+		final N5HDF5Reader hdf5Min = new N5HDF5Reader(hdf5ReaderMin, new int[] {128, 128, 1});
 
 		System.out.println(Arrays.toString(hdf5Max.listAttributes("/").keySet().toArray()));
 		System.out.println(hdf5Max.getDatasetAttributes("/volume").getDataType());
@@ -3623,8 +3623,13 @@ public class BigWarp< T >
 			final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
 			final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
 
-			mipmapsFlat[s] = cachedFlatSource;
-			mipmapsOriginal[s] = cachedOriginalSource;
+			if( useVolatile ) {
+				mipmapsFlat[s] = cachedFlatSource;
+				mipmapsOriginal[s] = cachedOriginalSource;
+			} else {
+				mipmapsFlat[s] = subsampledFlatSource;
+				mipmapsOriginal[s] = subsampledOriginalSource;
+			}
 			scales[s] = new double[]{scale, scale, scale};
 		}
 
