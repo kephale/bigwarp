@@ -3498,7 +3498,7 @@ public class BigWarp< T >
 		double transformScaleX = 1;
 		double transformScaleY = 1;
 
-		boolean useVolatile = false;
+		boolean useVolatile = true;
 
 		FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", new double[]{1, 1, 1});
 
@@ -3589,6 +3589,7 @@ public class BigWarp< T >
 
 		/*
 		 * transform, everything below needs update when transform changes
+		 * FIXME: remember to not use a cache for the flattened source
 		 */
 		for (int s = 0; s < numScales; ++s) {
 
@@ -3673,18 +3674,10 @@ public class BigWarp< T >
 		if ( !fnLandmarks.isEmpty() )
 			bw.getLandmarkPanel().getTableModel().load( new File( fnLandmarks ) );
 
+		// TODO:
+		// - remove flattened source cache
+		// - automatically create points in the image that wasn't clicked by propagating through transform
 
-
-//		bdvFlat = Show.mipmapSource(volatileMipmapSourceFlat, bdvFlat, BdvOptions.options().screenScales(new double[] {0.5}).numRenderingThreads(10).frameTitle("Flattened"));
-//		bdvOriginal = Show.mipmapSource(volatileMipmapSourceOriginal, bdvOriginal, BdvOptions.options().screenScales(new double[] {0.5}).numRenderingThreads(10).frameTitle("Original"));
-
-		//System.setProperty( "apple.laf.useScreenMenuBar", "false" );
-
-
-
-//		if ( doInverse )
-//			bw.invertPointCorrespondences();
 
 	}
-
 }
