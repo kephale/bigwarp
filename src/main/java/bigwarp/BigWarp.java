@@ -2625,14 +2625,15 @@ public class BigWarp< T >
 				thisViewer.getGlobalMouseCoordinates( BigWarp.this.currentLandmark );
 
 				BigWarp.this.currentLandmark.localize( ptarrayLoc );
-				selectedPointIndex = BigWarp.this.selectedLandmark( ptarrayLoc, isMoving );
+				//selectedPointIndex = BigWarp.this.selectedLandmark( ptarrayLoc, isMoving );
 
-				if ( selectedPointIndex >= 0 )
-				{
-					landmarkTable.setRowSelectionInterval( selectedPointIndex, selectedPointIndex );
-					landmarkFrame.repaint();
-					BigWarp.this.landmarkModel.setLastPoint( selectedPointIndex, isMoving );
-				}
+
+//				if ( selectedPointIndex >= 0 )
+//				{
+//					landmarkTable.setRowSelectionInterval( selectedPointIndex, selectedPointIndex );
+//					landmarkFrame.repaint();
+//					BigWarp.this.landmarkModel.setLastPoint( selectedPointIndex, isMoving );
+//				}
 			}
 		}
 
@@ -2688,7 +2689,7 @@ public class BigWarp< T >
 					// pair was added.
 					// if we changed and existing row, then we have both points
 					// in the pair and should recompute
-					BigWarp.this.restimateTransformation();
+					BigWarp.this.restimateTransformation();// FIXME update this tranform when nails added
 				}
 
 				if( wasNewRowAdded )
@@ -2761,21 +2762,41 @@ public class BigWarp< T >
 		 */
 		public void addFixedPoint( final RealPoint pt, final boolean isMovingImage )
 		{
+			// FIXME This method has been overridden
 			if ( isMovingImage && viewerP.getTransformEnabled() )
 			{
 				// Here we clicked in the space of the moving image
 				currentLandmark.localize( ptarrayLoc );
+				BigWarp.this.currentTransform.applyInverse(ptarrayLoc, ptBackLoc);
 				addPoint( ptarrayLoc, true, viewerP );
-				addPoint( ptarrayLoc, false, viewerQ );
+				addPoint( ptBackLoc, false, viewerQ );
 			}
 			else
 			{
 				currentLandmark.localize( ptarrayLoc );
+				BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);
+
 				addPoint( ptarrayLoc, true, viewerP );
-				addPoint( ptarrayLoc, false, viewerQ );
+				addPoint( ptBackLoc, false, viewerQ );
 			}
 			if ( updateWarpOnPtChange )
 				BigWarp.this.restimateTransformation();
+
+//			if ( isMovingImage && viewerP.getTransformEnabled() )
+//			{
+//				// Here we clicked in the space of the moving image
+//				currentLandmark.localize( ptarrayLoc );
+//				addPoint( ptarrayLoc, true, viewerP );
+//				addPoint( ptarrayLoc, false, viewerQ );
+//			}
+//			else
+//			{
+//				currentLandmark.localize( ptarrayLoc );
+//				addPoint( ptarrayLoc, true, viewerP );
+//				addPoint( ptarrayLoc, false, viewerQ );
+//			}
+//			if ( updateWarpOnPtChange )
+//				BigWarp.this.restimateTransformation();
 		}
 	}
 
@@ -3670,6 +3691,8 @@ public class BigWarp< T >
 
 		BigWarp bw;
 		bw = new BigWarp( bwData, new File( rawN5 ).getName(), progress );
+
+		bw.setTransformationMovingSourceOnly(ft);
 
 		if ( !fnLandmarks.isEmpty() )
 			bw.getLandmarkPanel().getTableModel().load( new File( fnLandmarks ) );
