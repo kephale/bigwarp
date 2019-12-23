@@ -311,6 +311,17 @@ public class BigWarp< T >
 	private SpimData movingSpimData;
 	private File movingImageXml;
 
+	// SEMA additions
+	public RandomAccessibleInterval<DoubleType> max = null;
+	public RandomAccessibleInterval<DoubleType> min = null;
+	double transformScaleX = 1;
+	double transformScaleY = 1;
+	/* parameterize with picocli */
+	double minY = 1189.986083984375;
+	double maxY = 4233.8876953125;
+
+	long padding = 2000;
+
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
 		this( data, windowTitle, BigWarpViewerOptions.options( ( detectNumDims( data.sources ) == 2 ) ), progressWriter );
@@ -2356,10 +2367,10 @@ public class BigWarp< T >
 
 	public boolean restimateTransformation()
 	{
-		if ( landmarkModel.getActiveRowCount() < 4 )
-		{
-			return false;
-		}
+//		if ( landmarkModel.getActiveRowCount() < 4 )
+//		{
+//			return false;
+//		}
 		// TODO restimateTransformation
 		// This distinction is unnecessary right now, because
 		// transferUpdatesToModel just calls initTransformation.. but this may
@@ -2371,13 +2382,15 @@ public class BigWarp< T >
 
 		solverThread.requestResolve( true, -1, null );
 
-		// display the warped version automatically if this is the first
-		// time the transform was computed
-		if ( firstWarpEstimation )
-		{
-			setUpdateWarpOnChange( true );
-			firstWarpEstimation = false;
-		}
+
+
+//		// display the warped version automatically if this is the first
+//		// time the transform was computed
+//		if ( firstWarpEstimation )
+//		{
+//			setUpdateWarpOnChange( true );
+//			firstWarpEstimation = false;
+//		}
 
 		viewerP.requestRepaint();
 		viewerQ.requestRepaint();
@@ -2689,7 +2702,7 @@ public class BigWarp< T >
 					// pair was added.
 					// if we changed and existing row, then we have both points
 					// in the pair and should recompute
-					BigWarp.this.restimateTransformation();// FIXME update this tranform when nails added
+					BigWarp.this.restimateTransformation();// FIXME update this transform when nails added
 				}
 
 				if( wasNewRowAdded )
@@ -2762,6 +2775,9 @@ public class BigWarp< T >
 		 */
 		public void addFixedPoint( final RealPoint pt, final boolean isMovingImage )
 		{
+			if( BigWarp.this.currentTransform == null )
+				BigWarp.this.restimateTransformation();
+
 			// FIXME This method has been overridden
 			if ( isMovingImage && viewerP.getTransformEnabled() )
 			{
@@ -3194,7 +3210,26 @@ public class BigWarp< T >
 				if ( b )
 					try
 					{
-						InvertibleRealTransform invXfm = bw.getTransformation( index );
+						//InvertibleRealTransform invXfm = bw.getTransformation( index );
+						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
+
+						// FIXME recompute min and max heightmaps here
+
+						final FlattenTransform ft = new FlattenTransform(
+								RealViews.affine(
+										Views.interpolate(
+												Views.extendBorder(bw.min),
+												new NLinearInterpolatorFactory<>()),
+										transformScale),
+								RealViews.affine(
+										Views.interpolate(
+												Views.extendBorder(bw.max),
+												new NLinearInterpolatorFactory<>()),
+										transformScale),
+								bw.minY,
+								bw.maxY);
+
+						InvertibleRealTransform invXfm = ft;
 
 //						System.out.println( "ct   : " + bw.getCoordinateTransform());
 //						System.out.println( "tpsb : " + bw.getTpsBase());
@@ -3503,21 +3538,12 @@ public class BigWarp< T >
 	public static void main( final String[] args ) throws IOException, SpimDataException {
 		new ImageJ();
 
-		/* parameterize with picocli */
-		double minY = 1189.986083984375;
-		double maxY = 4233.8876953125;
-
-		long padding = 2000;
-
 		//@Option(names = {"--minFaceFile"}, required = false, description = "HDF5 file with min face, e.g. --minFaceFile /nrs/flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5")
 		String minFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5";
 
 		String maxFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-top.h5";
 		String rawN5 = "/groups/cardona/home/harringtonk/nrs_flyem/render/n5/Z1217_19m/Sec04/stacks";
 		String datasetName = "/v1_1_affine_filtered_1_26365___20191217_153959";
-
-		double transformScaleX = 1;
-		double transformScaleY = 1;
 
 		boolean useVolatile = true;
 
@@ -3543,24 +3569,25 @@ public class BigWarp< T >
 		final RandomAccessibleInterval<FloatType> maxFloats = N5Utils.openVolatile(hdf5Max, "/volume");
 		final RandomAccessibleInterval<FloatType> minFloats = N5Utils.openVolatile(hdf5Min, "/volume");
 
+		// max/min should be a part of the BigWarp
 		final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxFloats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
 		final RandomAccessibleInterval<DoubleType> min = Converters.convert(minFloats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
 
-		final Scale2D transformScale = new Scale2D(transformScaleX, transformScaleY);
-
-		final FlattenTransform ft = new FlattenTransform(
-				RealViews.affine(
-						Views.interpolate(
-								Views.extendBorder(min),
-								new NLinearInterpolatorFactory<>()),
-						transformScale),
-				RealViews.affine(
-						Views.interpolate(
-								Views.extendBorder(max),
-								new NLinearInterpolatorFactory<>()),
-						transformScale),
-				minY,
-				maxY);
+//		final Scale2D transformScale = new Scale2D(transformScaleX, transformScaleY);
+//
+//		final FlattenTransform ft = new FlattenTransform(
+//				RealViews.affine(
+//						Views.interpolate(
+//								Views.extendBorder(min),
+//								new NLinearInterpolatorFactory<>()),
+//						transformScale),
+//				RealViews.affine(
+//						Views.interpolate(
+//								Views.extendBorder(max),
+//								new NLinearInterpolatorFactory<>()),
+//						transformScale),
+//				minY,
+//				maxY);
 
 		/*
 		 * raw data
@@ -3568,7 +3595,10 @@ public class BigWarp< T >
 		final int numProc = Runtime.getRuntime().availableProcessors();
 		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
 
+		double minY = 1189.986083984375;
+		double maxY = 4233.8876953125;
 
+		long padding = 2000;
 
 		final long[] dimensions = n5.getDatasetAttributes(datasetName + "/s0").getDimensions();
 
@@ -3621,16 +3651,17 @@ public class BigWarp< T >
 			final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
 			final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
 			final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
-			transformSequenceFlat.add(shift);
-			transformSequenceFlat.add(ft.inverse());
-			transformSequenceFlat.add(shift.inverse());
-			transformSequenceFlat.add(scale3D);
+//			transformSequenceFlat.add(shift);
+//			transformSequenceFlat.add(ft.inverse());
+//			transformSequenceFlat.add(shift.inverse());
+//			transformSequenceFlat.add(scale3D);
 
 			final RandomAccessibleInterval<UnsignedByteType> flatSource =
 					Transform.createTransformedInterval(
 							Views.permute(rawMipmaps[s], 1, 2),
 							cropInterval,
-							transformSequenceFlat,
+							scale3D,
+							//transformSequenceFlat,
 							new UnsignedByteType(0));
 			final RandomAccessibleInterval<UnsignedByteType> originalSource =
 					Transform.createTransformedInterval(
@@ -3692,7 +3723,12 @@ public class BigWarp< T >
 		BigWarp bw;
 		bw = new BigWarp( bwData, new File( rawN5 ).getName(), progress );
 
-		bw.setTransformationMovingSourceOnly(ft);
+		// SEMA max/min heightmap
+		bw.max = max;
+		bw.min = min;
+		bw.restimateTransformation();
+
+		//bw.setTransformationMovingSourceOnly(ft);
 
 		if ( !fnLandmarks.isEmpty() )
 			bw.getLandmarkPanel().getTableModel().load( new File( fnLandmarks ) );
