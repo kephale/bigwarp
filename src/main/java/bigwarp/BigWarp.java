@@ -15,12 +15,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.RejectedExecutionException;
 
 import javax.swing.ActionMap;
@@ -39,7 +34,6 @@ import javax.swing.event.TableModelListener;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellEditor;
 
-import bdv.util.BdvOptions;
 import bdv.util.BdvStackSource;
 import bdv.util.RandomAccessibleIntervalMipmapSource;
 import bdv.util.volatiles.SharedQueue;
@@ -56,6 +50,7 @@ import net.imglib2.realtransform.*;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.view.SubsampleIntervalView;
+import net.preibisch.surface.SurfaceFitCommand;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
@@ -321,6 +316,7 @@ public class BigWarp< T >
 	double maxY = 4233.8876953125;
 
 	long padding = 2000;
+	private net.imagej.ImageJ imagej;
 
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2381,7 +2377,7 @@ public class BigWarp< T >
 //			landmarkModel.transferUpdatesToModel();
 
 		solverThread.requestResolve( true, -1, null );
-
+		//this.currentTransform =
 
 
 //		// display the warped version automatically if this is the first
@@ -2783,17 +2779,18 @@ public class BigWarp< T >
 			{
 				// Here we clicked in the space of the moving image
 				currentLandmark.localize( ptarrayLoc );
-				BigWarp.this.currentTransform.applyInverse(ptarrayLoc, ptBackLoc);
+				BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);
 				addPoint( ptarrayLoc, true, viewerP );
 				addPoint( ptBackLoc, false, viewerQ );
 			}
 			else
 			{
 				currentLandmark.localize( ptarrayLoc );
-				BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);
+				BigWarp.this.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
 
-				addPoint( ptarrayLoc, true, viewerP );
-				addPoint( ptBackLoc, false, viewerQ );
+				//addPoint( ptarrayLoc, true, viewerP );
+				addPoint( ptBackLoc, true, viewerP );
+				addPoint( ptarrayLoc, false, viewerQ );
 			}
 			if ( updateWarpOnPtChange )
 				BigWarp.this.restimateTransformation();
@@ -3214,6 +3211,13 @@ public class BigWarp< T >
 						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
 
 						// FIXME recompute min and max heightmaps here
+//						Map<String, Object> argmap = new HashMap<>();
+//						argmap.put("inputDirectory", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec04/flatten/tmp-flattening-level200/resampled/");
+//						argmap.put("outputDirectory", "/home/kharrington/Data/SEMA/Z1217-19m/VNC/Sec04/heightSurf/");
+//						argmap.put("originalDimX", 23254);
+//						argmap.put("originalDimZ", 26358);
+//						argmap.put("outputGroupname", "level200");
+//						bw.imagej.command().run(SurfaceFitCommand.class, true, argmap);
 
 						final FlattenTransform ft = new FlattenTransform(
 								RealViews.affine(
@@ -3230,6 +3234,8 @@ public class BigWarp< T >
 								bw.maxY);
 
 						InvertibleRealTransform invXfm = ft;
+						bw.currentTransform = ft;
+						//bw.currentTransform = ft.inverse();// FIXME debug
 
 //						System.out.println( "ct   : " + bw.getCoordinateTransform());
 //						System.out.println( "tpsb : " + bw.getTpsBase());
@@ -3536,7 +3542,7 @@ public class BigWarp< T >
 
 
 	public static void main( final String[] args ) throws IOException, SpimDataException {
-		new ImageJ();
+		net.imagej.ImageJ imagej = new net.imagej.ImageJ();
 
 		//@Option(names = {"--minFaceFile"}, required = false, description = "HDF5 file with min face, e.g. --minFaceFile /nrs/flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5")
 		String minFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5";
@@ -3722,6 +3728,9 @@ public class BigWarp< T >
 
 		BigWarp bw;
 		bw = new BigWarp( bwData, new File( rawN5 ).getName(), progress );
+		bw.imagej = imagej;
+
+		bw.setIsMovingDisplayTransformed(true);
 
 		// SEMA max/min heightmap
 		bw.max = max;
