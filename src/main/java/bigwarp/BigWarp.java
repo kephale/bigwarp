@@ -43,14 +43,18 @@ import mpicbg.spim.data.SpimData;
 import mpicbg.spim.data.XmlIoSpimData;
 import mpicbg.spim.data.registration.ViewTransformAffine;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
+import net.imagej.ops.OpService;
 import net.imglib2.*;
 import net.imglib2.converter.Converters;
 import net.imglib2.img.Img;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.realtransform.*;
 import net.imglib2.type.numeric.RealType;
+import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
+import net.imglib2.util.Intervals;
+import net.imglib2.util.Pair;
 import net.imglib2.view.SubsampleIntervalView;
 import net.preibisch.surface.SurfaceFitCommand;
 import org.apache.log4j.LogManager;
@@ -155,6 +159,9 @@ import net.imglib2.type.volatiles.VolatileFloatType;
 import net.imglib2.ui.TransformEventHandler;
 import net.imglib2.ui.TransformListener;
 import net.imglib2.view.Views;
+
+import static bigwarp.SemaUtils.getAvgValue;
+import static net.preibisch.surface.SurfaceFitCommand.*;
 
 public class BigWarp< T >
 {
@@ -3547,8 +3554,8 @@ public class BigWarp< T >
 		net.imagej.ImageJ imagej = new net.imagej.ImageJ();
 
 		//@Option(names = {"--minFaceFile"}, required = false, description = "HDF5 file with min face, e.g. --minFaceFile /nrs/flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5")
-		String minFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5";
-		String maxFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-top.h5";
+//		String minFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5";
+//		String maxFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-top.h5";
 
 		String costDirectory = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/flatten/tmp-flattening-level200/resampled/";
 		// TODO open cost directory and interpolate to appropriate size
@@ -3568,22 +3575,15 @@ public class BigWarp< T >
 		/*
 		 * transformation
 		 */
-		final IHDF5Reader hdf5ReaderMax = HDF5Factory.openForReading(maxFaceFile);
-		final IHDF5Reader hdf5ReaderMin = HDF5Factory.openForReading(minFaceFile);
+//		final IHDF5Reader hdf5ReaderMax = HDF5Factory.openForReading(maxFaceFile);
+//		final IHDF5Reader hdf5ReaderMin = HDF5Factory.openForReading(minFaceFile);
 //		final IHDF5Reader hdf5ReaderTop = HDF5Factory.openForReading("/home/saalfeld/projects/flyem/Sec04-top.h5");
 //		final IHDF5Reader hdf5ReaderBot = HDF5Factory.openForReading("/home/saalfeld/projects/flyem/Sec04-bottom.h5");
-		final N5HDF5Reader hdf5Max = new N5HDF5Reader(hdf5ReaderMax, new int[] {128, 128, 1});
-		final N5HDF5Reader hdf5Min = new N5HDF5Reader(hdf5ReaderMin, new int[] {128, 128, 1});
+//		final N5HDF5Reader hdf5Max = new N5HDF5Reader(hdf5ReaderMax, new int[] {128, 128, 1});
+//		final N5HDF5Reader hdf5Min = new N5HDF5Reader(hdf5ReaderMin, new int[] {128, 128, 1});
 
-		System.out.println(Arrays.toString(hdf5Max.listAttributes("/").keySet().toArray()));
-		System.out.println(hdf5Max.getDatasetAttributes("/volume").getDataType());
-
-		final RandomAccessibleInterval<FloatType> maxFloats = N5Utils.openVolatile(hdf5Max, "/volume");
-		final RandomAccessibleInterval<FloatType> minFloats = N5Utils.openVolatile(hdf5Min, "/volume");
-
-		// max/min should be a part of the BigWarp
-		final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxFloats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-		final RandomAccessibleInterval<DoubleType> min = Converters.convert(minFloats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+//		System.out.println(Arrays.toString(hdf5Max.listAttributes("/").keySet().toArray()));
+//		System.out.println(hdf5Max.getDatasetAttributes("/volume").getDataType());
 
 //		final Scale2D transformScale = new Scale2D(transformScaleX, transformScaleY);
 //
@@ -3607,12 +3607,40 @@ public class BigWarp< T >
 		final int numProc = Runtime.getRuntime().availableProcessors();
 		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
 
-		double minY = 1189.986083984375;
-		double maxY = 4233.8876953125;
+//		double minY = 1189.986083984375;
+//		double maxY = 4233.8876953125;
 
 		long padding = 2000;
 
 		final long[] dimensions = n5.getDatasetAttributes(datasetName + "/s0").getDimensions();
+
+		// TODO now compute the min and max surfaces with the initial cost estimate
+		long originalDimX = dimensions[0];
+		long originalDimZ = dimensions[2];
+
+		OpService ops = imagej.op();
+
+		double minY, maxY;
+
+		//final RandomAccessibleInterval<IntType> maxUnsignedShorts = getScaledSurfaceMap(getTopImg(costImg, ops), costImg.dimension(2)/2, originalDimX, originalDimZ, ops);
+		Pair<RandomAccessibleInterval<IntType>, DoubleType> maxPair = getScaledSurfaceMapAndAverage(getTopImg(costImg, ops), costImg.dimension(2) / 2, originalDimX, originalDimZ, ops);
+		final RandomAccessibleInterval<IntType> maxUnsignedShorts = maxPair.getA();
+		maxY = maxPair.getB().getRealDouble();
+		logger.info("Done with top surface");
+
+		//final RandomAccessibleInterval<IntType> minUnsignedShorts = getScaledSurfaceMap(getBotImg(costImg, ops), 0, originalDimX, originalDimZ, ops);
+		Pair<RandomAccessibleInterval<IntType>, DoubleType> minPair = getScaledSurfaceMapAndAverage(getBotImg(costImg, ops), 0, originalDimX, originalDimZ, ops);
+		final RandomAccessibleInterval<IntType> minUnsignedShorts = minPair.getA();
+		minY = minPair.getB().getRealDouble();
+		logger.info("Done with bottom surface");
+
+		// max/min should be a part of the BigWarp
+		final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxUnsignedShorts, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+		final RandomAccessibleInterval<DoubleType> min = Converters.convert(minUnsignedShorts, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+
+		System.out.println("minY is " +  minY + " and maxY is " + maxY);
+
+		logger.info("Done processing surfaces");
 
 		final FinalInterval cropInterval = new FinalInterval(
 				new long[] {0, 0, Math.round(minY) - padding},

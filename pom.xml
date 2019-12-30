@@ -134,6 +134,10 @@
 
 	<dependencies>
 		<dependency>
+			<groupId>net.imagej</groupId>
+			<artifactId>imagej-ops</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>de.mpicbg.scf</groupId>
 			<artifactId>MinCostZSurface_</artifactId>
 			<version>1.1.6-SNAPSHOT</version>
@@ -167,6 +171,8 @@
 <!--			<artifactId>hot-knife</artifactId>-->
 <!--			<version>26915b3</version>-->
 <!--		</dependency>-->
+
+
 		<dependency>
 			<groupId>mpicbg</groupId>
 			<artifactId>mpicbg_</artifactId>
