@@ -45,8 +45,10 @@ import mpicbg.spim.data.registration.ViewTransformAffine;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
 import net.imglib2.*;
 import net.imglib2.converter.Converters;
+import net.imglib2.img.Img;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.realtransform.*;
+import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.view.SubsampleIntervalView;
@@ -3546,8 +3548,12 @@ public class BigWarp< T >
 
 		//@Option(names = {"--minFaceFile"}, required = false, description = "HDF5 file with min face, e.g. --minFaceFile /nrs/flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5")
 		String minFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5";
-
 		String maxFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-top.h5";
+
+		String costDirectory = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/flatten/tmp-flattening-level200/resampled/";
+		// TODO open cost directory and interpolate to appropriate size
+		Img<RealType> costImg = SemaUtils.readAndFlipCost(costDirectory);
+
 		String rawN5 = "/groups/cardona/home/harringtonk/nrs_flyem/render/n5/Z1217_19m/Sec04/stacks";
 		String datasetName = "/v1_1_affine_filtered_1_26365___20191217_153959";
 
@@ -3741,10 +3747,6 @@ public class BigWarp< T >
 
 		if ( !fnLandmarks.isEmpty() )
 			bw.getLandmarkPanel().getTableModel().load( new File( fnLandmarks ) );
-
-		// TODO:
-		// - remove flattened source cache
-		// - automatically create points in the image that wasn't clicked by propagating through transform
 
 
 	}
