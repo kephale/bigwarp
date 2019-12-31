@@ -3244,7 +3244,7 @@ public class BigWarp< T >
                             BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
                         }
 
-						IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
+						//IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
 
 						//RandomAccessibleInterval<RealType> costImg = bw.sourceCostImg;
 
