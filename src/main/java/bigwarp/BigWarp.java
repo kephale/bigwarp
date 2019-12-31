@@ -45,6 +45,7 @@ import mpicbg.spim.data.registration.ViewTransformAffine;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
 import net.imagej.ops.OpService;
 import net.imglib2.*;
+import net.imglib2.RandomAccess;
 import net.imglib2.converter.Converters;
 import net.imglib2.img.Img;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
@@ -55,6 +56,7 @@ import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.util.Intervals;
 import net.imglib2.util.Pair;
+import net.imglib2.view.IntervalView;
 import net.imglib2.view.SubsampleIntervalView;
 import net.preibisch.surface.SurfaceFitCommand;
 import org.apache.log4j.LogManager;
@@ -316,8 +318,8 @@ public class BigWarp< T >
 	private File movingImageXml;
 
 	// SEMA additions
-	public RandomAccessibleInterval<DoubleType> max = null;
-	public RandomAccessibleInterval<DoubleType> min = null;
+//	public RandomAccessibleInterval<DoubleType> max = null;
+//	public RandomAccessibleInterval<DoubleType> min = null;
 	double transformScaleX = 1;
 	double transformScaleY = 1;
 	/* parameterize with picocli */
@@ -326,6 +328,11 @@ public class BigWarp< T >
 
 	long padding = 2000;
 	private net.imagej.ImageJ imagej;
+    //private Img<RealType> sourceCostImg;
+    private RandomAccessibleInterval<RealType> sourceCostImg;
+    public long originalDimX;
+    public long originalDimZ;
+	private FinalInterval fullSizeInterval;
 
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2370,6 +2377,7 @@ public class BigWarp< T >
 		gSrc.setWarp( transform );
 	}
 
+	long lastNumLandmarks = -1;
 	public boolean restimateTransformation()
 	{
 //		if ( landmarkModel.getActiveRowCount() < 4 )
@@ -2385,7 +2393,10 @@ public class BigWarp< T >
 //		else
 //			landmarkModel.transferUpdatesToModel();
 
-		solverThread.requestResolve( true, -1, null );
+        if( landmarkModel.getActiveRowCount() != lastNumLandmarks ) {// FIXME, this needs to check if the landmarks have changed at all
+            solverThread.requestResolve(true, -1, null);
+            lastNumLandmarks = landmarkModel.getActiveRowCount();
+        }
 		//this.currentTransform =
 
 
@@ -3219,24 +3230,44 @@ public class BigWarp< T >
 						//InvertibleRealTransform invXfm = bw.getTransformation( index );
 						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
 
-						// FIXME recompute min and max heightmaps here
-//						Map<String, Object> argmap = new HashMap<>();
-//						argmap.put("inputDirectory", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec04/flatten/tmp-flattening-level200/resampled/");
-//						argmap.put("outputDirectory", "/home/kharrington/Data/SEMA/Z1217-19m/VNC/Sec04/heightSurf/");
-//						argmap.put("originalDimX", 23254);
-//						argmap.put("originalDimZ", 26358);
-//						argmap.put("outputGroupname", "level200");
-//						bw.imagej.command().run(SurfaceFitCommand.class, true, argmap);
+						RandomAccessibleInterval<RealType> costImg = bw.imagej.op().copy().rai(bw.sourceCostImg);
+                        // TODO now add nails to cost img
+                        List<Double[]> nails = bw.landmarkModel.getPoints(false);
+                        for( Double[] nail : nails ) {
+                            BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
+                        }
+
+						//RandomAccessibleInterval<RealType> costImg = bw.sourceCostImg;
+
+                        double minY, maxY;
+                        // FIXME this eventually leads to min max = 0 which doesnt makes ense
+                        //final RandomAccessibleInterval<IntType> maxUnsignedShorts = getScaledSurfaceMap(getTopImg(costImg, ops), costImg.dimension(2)/2, originalDimX, originalDimZ, ops);
+                        Pair<RandomAccessibleInterval<IntType>, DoubleType> maxPair = getScaledSurfaceMapAndAverage(getTopImg(costImg, bw.imagej.op()), costImg.dimension(2) / 2, bw.originalDimX, bw.originalDimZ, bw.imagej.op());
+                        final RandomAccessibleInterval<IntType> maxUnsignedShorts = maxPair.getA();
+                        maxY = maxPair.getB().getRealDouble();
+                        logger.info("Done with top surface");
+
+                        //final RandomAccessibleInterval<IntType> minUnsignedShorts = getScaledSurfaceMap(getBotImg(costImg, ops), 0, originalDimX, originalDimZ, ops);
+                        Pair<RandomAccessibleInterval<IntType>, DoubleType> minPair = getScaledSurfaceMapAndAverage(getBotImg(costImg, bw.imagej.op()), 0, bw.originalDimX, bw.originalDimZ, bw.imagej.op());
+                        final RandomAccessibleInterval<IntType> minUnsignedShorts = minPair.getA();
+                        minY = minPair.getB().getRealDouble();
+                        logger.info("Done with bottom surface");
+
+                        // max/min should be a part of the BigWarp
+                        final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxUnsignedShorts, (a, d) -> d.setReal(a.getRealDouble()), new DoubleType());
+                        final RandomAccessibleInterval<DoubleType> min = Converters.convert(minUnsignedShorts, (a, d) -> d.setReal(a.getRealDouble()), new DoubleType());
+
+                        System.out.println("minY is " +  minY + " and maxY is " + maxY);
 
 						final FlattenTransform ft = new FlattenTransform(
 								RealViews.affine(
 										Views.interpolate(
-												Views.extendBorder(bw.min),
+												Views.extendBorder(min),
 												new NLinearInterpolatorFactory<>()),
 										transformScale),
 								RealViews.affine(
 										Views.interpolate(
-												Views.extendBorder(bw.max),
+												Views.extendBorder(max),
 												new NLinearInterpolatorFactory<>()),
 										transformScale),
 								bw.minY,
@@ -3322,8 +3353,30 @@ public class BigWarp< T >
 		}
 		
 	}
-	
-	public static class WrappedCoordinateTransform implements InvertibleRealTransform
+
+	// Add a nail to the costImg, costImg is at full scale and nail is in full scale coords
+    private static void applyNail(RandomAccessibleInterval<RealType> costImg, Double[] nail, FinalInterval fullSizeInterval) {
+        RandomAccess<RealType> ra = costImg.randomAccess();
+
+        long[] scaledNail = new long[3];
+        for( int d = 0; d < scaledNail.length; d++ ) {
+        	scaledNail[d] = Math.round(costImg.dimension(d) * nail[d] / fullSizeInterval.dimension(0));
+        }
+
+        long[] pos = new long[]{scaledNail[0], 0, scaledNail[2]};
+
+        for( int y = 0; y < costImg.dimension(1); y++ ) {
+            pos[1] = y;
+            ra.localize(pos);
+            if( y == Math.round(scaledNail[1]) ) {
+                ra.get().setReal(0);
+            } else {
+                ra.get().setReal(ra.get().getMaxValue());
+            }
+        }
+    }
+
+    public static class WrappedCoordinateTransform implements InvertibleRealTransform
 	{
 		private final InvertibleCoordinateTransform ct;
 		private final InvertibleCoordinateTransform ct_inv;
@@ -3559,7 +3612,8 @@ public class BigWarp< T >
 
 		String costDirectory = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/flatten/tmp-flattening-level200/resampled/";
 		// TODO open cost directory and interpolate to appropriate size
-		Img<RealType> costImg = SemaUtils.readAndFlipCost(costDirectory);
+		//Img<RealType> costImg = SemaUtils.readAndFlipCost(costDirectory);
+		Img<RealType> sourceCostImg = SemaUtils.readAndFlipCost(costDirectory);
 
 		String rawN5 = "/groups/cardona/home/harringtonk/nrs_flyem/render/n5/Z1217_19m/Sec04/stacks";
 		String datasetName = "/v1_1_affine_filtered_1_26365___20191217_153959";
@@ -3619,6 +3673,8 @@ public class BigWarp< T >
 		long originalDimZ = dimensions[2];
 
 		OpService ops = imagej.op();
+
+		RandomAccessibleInterval<RealType> costImg = imagej.op().copy().rai(sourceCostImg);
 
 		double minY, maxY;
 
@@ -3767,9 +3823,18 @@ public class BigWarp< T >
 		bw.setIsMovingDisplayTransformed(true);
 
 		// SEMA max/min heightmap
-		bw.max = max;
-		bw.min = min;
+		//bw.max = max;
+		//bw.min = min;
+
+		// For testing w/ fullSizeCost
+//        IntervalView<RealType> fullSizeCost = Views.interval(Views.raster(Views.interpolate(sourceCostImg, new NLinearInterpolatorFactory<>())),
+//                Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]));
+
+		bw.fullSizeInterval = Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]);
+		bw.sourceCostImg = sourceCostImg;
 		bw.restimateTransformation();
+		bw.originalDimX = originalDimX;
+		bw.originalDimZ = originalDimZ;
 
 		//bw.setTransformationMovingSourceOnly(ft);
 
