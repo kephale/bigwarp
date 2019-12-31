@@ -43,11 +43,14 @@ import mpicbg.spim.data.SpimData;
 import mpicbg.spim.data.XmlIoSpimData;
 import mpicbg.spim.data.registration.ViewTransformAffine;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
+import net.imagej.DefaultDataset;
+import net.imagej.ImgPlus;
 import net.imagej.ops.OpService;
 import net.imglib2.*;
 import net.imglib2.RandomAccess;
 import net.imglib2.converter.Converters;
 import net.imglib2.img.Img;
+import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.realtransform.*;
 import net.imglib2.type.numeric.RealType;
@@ -180,7 +183,7 @@ public class BigWarp< T >
 
 	protected BigWarpViewerOptions options;
 
-	protected BigWarpData< T > data;
+	protected BigWarpData data;
 
 	// descriptive names for indexing sources
 	protected int[] movingSourceIndexList;
@@ -333,6 +336,10 @@ public class BigWarp< T >
     public long originalDimX;
     public long originalDimZ;
 	private FinalInterval fullSizeInterval;
+	private int numScales;
+	private RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps;
+	private boolean useVolatile;
+	private SharedQueue queue;
 
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -3237,10 +3244,12 @@ public class BigWarp< T >
                             BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
                         }
 
+						IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
+
 						//RandomAccessibleInterval<RealType> costImg = bw.sourceCostImg;
 
                         double minY, maxY;
-                        // FIXME this eventually leads to min max = 0 which doesnt makes ense
+
                         //final RandomAccessibleInterval<IntType> maxUnsignedShorts = getScaledSurfaceMap(getTopImg(costImg, ops), costImg.dimension(2)/2, originalDimX, originalDimZ, ops);
                         Pair<RandomAccessibleInterval<IntType>, DoubleType> maxPair = getScaledSurfaceMapAndAverage(getTopImg(costImg, bw.imagej.op()), costImg.dimension(2) / 2, bw.originalDimX, bw.originalDimZ, bw.imagej.op());
                         final RandomAccessibleInterval<IntType> maxUnsignedShorts = maxPair.getA();
@@ -3282,6 +3291,103 @@ public class BigWarp< T >
 //						System.out.println( "tps  : " + bw.getTps());
 //						System.out.println( "xfm  : " + bw.getTransformation());
 
+						final FinalInterval cropInterval = new FinalInterval(
+						new long[] {0, 0, Math.round(minY) - bw.padding},
+						new long[] {bw.fullSizeInterval.dimension(0) - 1,
+									bw.fullSizeInterval.dimension(2) - 1,
+									Math.round(maxY) + bw.padding});
+
+						@SuppressWarnings("unchecked")
+						final RandomAccessibleInterval<UnsignedByteType>[] mipmapsFlat = new RandomAccessibleInterval[bw.numScales];
+						@SuppressWarnings("unchecked")
+						final RandomAccessibleInterval<UnsignedByteType>[] mipmapsOriginal = new RandomAccessibleInterval[bw.numScales];
+
+						final double[][] scales = new double[bw.numScales][];
+
+						/*
+						 * transform, everything below needs update when transform changes
+						 * FIXME: remember to not use a cache for the flattened source
+						 */
+						for (int s = 0; s < bw.numScales; ++s) {
+
+							/* TODO read downsamplingFactors */
+							final int scale = 1 << s;
+							final double inverseScale = 1.0 / scale;
+
+							final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
+							final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
+							final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
+				//			transformSequenceFlat.add(shift);
+				//			transformSequenceFlat.add(ft.inverse());
+				//			transformSequenceFlat.add(shift.inverse());
+				//			transformSequenceFlat.add(scale3D);
+
+							final RandomAccessibleInterval<UnsignedByteType> flatSource =
+									Transform.createTransformedInterval(
+											Views.permute(bw.rawMipmaps[s], 1, 2),
+											cropInterval,
+											scale3D,
+											//transformSequenceFlat,
+											new UnsignedByteType(0));
+							final RandomAccessibleInterval<UnsignedByteType> originalSource =
+									Transform.createTransformedInterval(
+											Views.permute(bw.rawMipmaps[s], 1, 2),
+											cropInterval,
+											scale3D,
+											new UnsignedByteType(0));
+
+							final SubsampleIntervalView<UnsignedByteType> subsampledFlatSource = Views.subsample(flatSource, scale);
+							final RandomAccessibleInterval<UnsignedByteType> cachedFlatSource = Show.wrapAsVolatileCachedCellImg(subsampledFlatSource, new int[]{32, 32, 32});
+
+							final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
+							final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
+
+							if( bw.useVolatile ) {
+								mipmapsFlat[s] = cachedFlatSource;
+								mipmapsOriginal[s] = cachedOriginalSource;
+							} else {
+								mipmapsFlat[s] = subsampledFlatSource;
+								mipmapsOriginal[s] = subsampledOriginalSource;
+							}
+							scales[s] = new double[]{scale, scale, scale};
+						}
+
+						FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", new double[]{1, 1, 1});
+
+						/*
+						 * update when transforms change
+						 */
+						final RandomAccessibleIntervalMipmapSource<?> mipmapSourceFlat =
+								new RandomAccessibleIntervalMipmapSource<>(
+										mipmapsFlat,
+										new UnsignedByteType(),
+										scales,
+										voxelDimensions,
+										"datasetName");
+						final RandomAccessibleIntervalMipmapSource<?> mipmapSourceOriginal =
+								new RandomAccessibleIntervalMipmapSource<>(
+										mipmapsOriginal,
+										new UnsignedByteType(),
+										scales,
+										voxelDimensions,
+										"datasetName");
+
+						final Source<?> volatileMipmapSourceFlat;
+						final Source<?> volatileMipmapSourceOriginal;
+						if (bw.useVolatile) {
+							volatileMipmapSourceFlat = mipmapSourceFlat.asVolatile(bw.queue);
+							volatileMipmapSourceOriginal = mipmapSourceOriginal.asVolatile(bw.queue);
+						} else {
+							volatileMipmapSourceFlat = mipmapSourceFlat;
+							volatileMipmapSourceOriginal = mipmapSourceOriginal;
+						}
+
+						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{volatileMipmapSourceFlat},
+																			new Source[]{volatileMipmapSourceOriginal},
+																			new String[]{"Flat", "Original"});
+
+						bw.data = bwData;
+
 						if ( invXfm == null )
 							return;
 
@@ -3318,7 +3424,7 @@ public class BigWarp< T >
 						bw.getViewerFrameQ().getViewerPanel().requestRepaint();
 					}
 
-					catch ( final RejectedExecutionException e )
+					catch ( final RejectedExecutionException | IOException e )
 					{
 						// this happens when the rendering threadpool
 						// is killed before the painter thread.
@@ -3365,13 +3471,23 @@ public class BigWarp< T >
 
         long[] pos = new long[]{scaledNail[0], 0, scaledNail[2]};
 
-        for( int y = 0; y < costImg.dimension(1); y++ ) {
+        long yStart, yStop;
+        if( scaledNail[1] < fullSizeInterval.dimension(2) / 2 ) {
+        	yStart = 0;
+        	yStop = fullSizeInterval.dimension(2) / 2;
+		} else {
+        	yStart = fullSizeInterval.dimension(2) / 2;
+        	yStop = fullSizeInterval.dimension(2);
+		}
+
+        for( long y = yStart; y < yStop; y++ ) {
             pos[1] = y;
             ra.localize(pos);
             if( y == Math.round(scaledNail[1]) ) {
-                ra.get().setReal(0);
+            	System.out.println("Placing nail at " + y + " was " + ra.get().getRealDouble() + " now 0");
+                ra.get().set(new UnsignedByteType(0));
             } else {
-                ra.get().setReal(ra.get().getMaxValue());
+                ra.get().set(new UnsignedByteType(255));
             }
         }
     }
@@ -3812,7 +3928,7 @@ public class BigWarp< T >
 
 		ProgressWriterIJ progress = new ProgressWriterIJ();
 
-		BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{volatileMipmapSourceFlat},
+		BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{volatileMipmapSourceFlat},
 				new Source[]{volatileMipmapSourceOriginal},
 				new String[]{"Flat", "Original"});
 
@@ -3835,6 +3951,10 @@ public class BigWarp< T >
 		bw.restimateTransformation();
 		bw.originalDimX = originalDimX;
 		bw.originalDimZ = originalDimZ;
+		bw.numScales = numScales;
+		bw.rawMipmaps = rawMipmaps;
+		bw.useVolatile = useVolatile;
+		bw.queue = queue;
 
 		//bw.setTransformationMovingSourceOnly(ft);
 
