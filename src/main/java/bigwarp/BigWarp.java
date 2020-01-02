@@ -3233,7 +3233,6 @@ public class BigWarp< T >
 						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
 
 						RandomAccessibleInterval<RealType> costImg = bw.imagej.op().copy().rai(bw.sourceCostImg);
-                        // TODO now add nails to cost img
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
                         for( Double[] nail : nails ) {
                             BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
@@ -3277,8 +3276,15 @@ public class BigWarp< T >
 								minY,
 								maxY);
 
-						InvertibleRealTransform invXfm = ft;
-						bw.currentTransform = ft;
+
+						// debugging flatten transform
+//                        double[] source = new double[]{100, 100, 100};
+//                        double[] target = new double[3];
+//                        ft.apply(source, target);
+//                        System.out.println("Target " + target[0] + " " + target[1] + " " + target[2]);
+
+                        bw.currentTransform = ft;
+
 						//bw.currentTransform = ft.inverse();// FIXME debug
 
 //						System.out.println( "ct   : " + bw.getCoordinateTransform());
@@ -3312,17 +3318,17 @@ public class BigWarp< T >
 							final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
 							final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
 							final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
-				//			transformSequenceFlat.add(shift);
-				//			transformSequenceFlat.add(ft.inverse());
-				//			transformSequenceFlat.add(shift.inverse());
-				//			transformSequenceFlat.add(scale3D);
+							transformSequenceFlat.add(shift);
+							transformSequenceFlat.add(ft.inverse());
+							transformSequenceFlat.add(shift.inverse());
+							transformSequenceFlat.add(scale3D);
 
 							final RandomAccessibleInterval<UnsignedByteType> flatSource =
 									Transform.createTransformedInterval(
 											Views.permute(bw.rawMipmaps[s], 1, 2),
 											cropInterval,
-											scale3D,
-											//transformSequenceFlat,
+											//scale3D,
+											transformSequenceFlat,
 											new UnsignedByteType(0));
 							final RandomAccessibleInterval<UnsignedByteType> originalSource =
 									Transform.createTransformedInterval(
@@ -3383,7 +3389,7 @@ public class BigWarp< T >
 
 						bw.data = bwData;
 
-						if ( invXfm == null )
+						if ( ft == null )
 							return;
 
 						if ( index < 0 )
@@ -3395,13 +3401,13 @@ public class BigWarp< T >
 							bw.landmarkModel.updateAllWarpedPoints();
 
 							// update sources with the new transformation
-							bw.setTransformationAll( invXfm );
+							bw.setTransformationAll(ft);
 							bw.fitBaselineWarpMagModel();
 						}
 						else
 						{
 							// update the transform and warped point
-							bw.setTransformationMovingSourceOnly( invXfm );
+							bw.setTransformationMovingSourceOnly(ft);
 						}
 
 						// update fixed point - but don't allow undo/redo
@@ -3468,7 +3474,7 @@ public class BigWarp< T >
         long[] pos = new long[]{scaledNail[0], 0, scaledNail[2]};
 
         long yStart, yStop;
-        if( nail[1] < costImg.dimension(1) / 2 ) {
+        if( scaledNail[1] < costImg.dimension(1) / 2 ) {
         	yStart = 0;
         	yStop = costImg.dimension(1) / 2;
 		} else {
@@ -3476,7 +3482,7 @@ public class BigWarp< T >
         	yStop = costImg.dimension(1);
 		}
 
-        System.out.println("ScaledNail = " + scaledNail[0] + " " + scaledNail[1] + " " + scaledNail[2] );
+        //System.out.println("ScaledNail = " + scaledNail[0] + " " + scaledNail[1] + " " + scaledNail[2] );
 
         for( long y = yStart; y < yStop; y++ ) {
             pos[1] = y;
@@ -3489,8 +3495,7 @@ public class BigWarp< T >
                 ra.get().set(new UnsignedByteType(255));
             }
             double post = ra.get().getRealDouble();
-            if( pre != post )
-            	System.out.println("Updating Y at " + y + " was " + pre + " now is " + post );
+            //if( pre != post ) System.out.println("Updating Y at " + y + " was " + pre + " now is " + post );
 
         }
     }
