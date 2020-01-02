@@ -3239,7 +3239,7 @@ public class BigWarp< T >
                             BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
                         }
 
-						IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
+						//IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
 
 						//RandomAccessibleInterval<RealType> costImg = bw.sourceCostImg;
 
@@ -3247,19 +3247,19 @@ public class BigWarp< T >
 
                         //final RandomAccessibleInterval<IntType> maxUnsignedShorts = getScaledSurfaceMap(getTopImg(costImg, ops), costImg.dimension(2)/2, originalDimX, originalDimZ, ops);
                         Pair<RandomAccessibleInterval<IntType>, DoubleType> maxPair = getScaledSurfaceMapAndAverage(getTopImg(costImg, bw.imagej.op()), costImg.dimension(2) / 2, bw.fullSizeInterval.dimension(0), bw.fullSizeInterval.dimension(2), bw.imagej.op());
-                        final RandomAccessibleInterval<IntType> maxUnsignedShorts = maxPair.getA();
+                        final RandomAccessibleInterval<IntType> maxInts = maxPair.getA();
                         maxY = maxPair.getB().getRealDouble();
                         logger.info("Done with top surface");
 
                         //final RandomAccessibleInterval<IntType> minUnsignedShorts = getScaledSurfaceMap(getBotImg(costImg, ops), 0, originalDimX, originalDimZ, ops);
                         Pair<RandomAccessibleInterval<IntType>, DoubleType> minPair = getScaledSurfaceMapAndAverage(getBotImg(costImg, bw.imagej.op()), 0, bw.fullSizeInterval.dimension(0), bw.fullSizeInterval.dimension(2), bw.imagej.op());
-                        final RandomAccessibleInterval<IntType> minUnsignedShorts = minPair.getA();
+                        final RandomAccessibleInterval<IntType> minInts = minPair.getA();
                         minY = minPair.getB().getRealDouble();
                         logger.info("Done with bottom surface");
 
                         // max/min should be a part of the BigWarp
-                        final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxUnsignedShorts, (a, d) -> d.setReal(a.getRealDouble()), new DoubleType());
-                        final RandomAccessibleInterval<DoubleType> min = Converters.convert(minUnsignedShorts, (a, d) -> d.setReal(a.getRealDouble()), new DoubleType());
+                        final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxInts, (a, d) -> d.setReal(a.getRealDouble()), new DoubleType());
+                        final RandomAccessibleInterval<DoubleType> min = Converters.convert(minInts, (a, d) -> d.setReal(a.getRealDouble()), new DoubleType());
 
                         System.out.println("minY is " +  minY + " and maxY is " + maxY);
 
