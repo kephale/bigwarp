@@ -3239,7 +3239,7 @@ public class BigWarp< T >
                             BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
                         }
 
-						//IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
+						IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
 
 						//RandomAccessibleInterval<RealType> costImg = bw.sourceCostImg;
 
@@ -3459,31 +3459,39 @@ public class BigWarp< T >
     private static void applyNail(RandomAccessibleInterval<RealType> costImg, Double[] nail, FinalInterval fullSizeInterval) {
         RandomAccess<RealType> ra = costImg.randomAccess();
 
-        long[] scaledNail = new long[3];
+        long[] scaledNail = new long[3];// in costImg dimensions
         for( int d = 0; d < scaledNail.length; d++ ) {
         	scaledNail[d] = Math.round(costImg.dimension(d) * nail[d] / fullSizeInterval.dimension(0));
         }
 
+        // Everything beyond here is in costImg dimensions
         long[] pos = new long[]{scaledNail[0], 0, scaledNail[2]};
 
         long yStart, yStop;
-        if( scaledNail[1] < fullSizeInterval.dimension(2) / 2 ) {
+        if( nail[1] < costImg.dimension(1) / 2 ) {
         	yStart = 0;
-        	yStop = fullSizeInterval.dimension(2) / 2;
+        	yStop = costImg.dimension(1) / 2;
 		} else {
-        	yStart = fullSizeInterval.dimension(2) / 2;
-        	yStop = fullSizeInterval.dimension(2);
+        	yStart = costImg.dimension(1) / 2;
+        	yStop = costImg.dimension(1);
 		}
+
+        System.out.println("ScaledNail = " + scaledNail[0] + " " + scaledNail[1] + " " + scaledNail[2] );
 
         for( long y = yStart; y < yStop; y++ ) {
             pos[1] = y;
-            ra.localize(pos);
-            if( y == Math.round(scaledNail[1]) ) {
-            	System.out.println("Placing nail at " + y + " was " + ra.get().getRealDouble() + " now 0");
+            ra.setPosition(pos);
+			double pre = ra.get().getRealDouble();
+            if( y == scaledNail[1] ) {
+            	//System.out.println("Placing nail at " + y + " was " + ra.get().getRealDouble() + " now 0");
                 ra.get().set(new UnsignedByteType(0));
             } else {
                 ra.get().set(new UnsignedByteType(255));
             }
+            double post = ra.get().getRealDouble();
+            if( pre != post )
+            	System.out.println("Updating Y at " + y + " was " + pre + " now is " + post );
+
         }
     }
 
