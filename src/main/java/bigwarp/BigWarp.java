@@ -2380,35 +2380,16 @@ public class BigWarp< T >
 	}
 
 	long lastNumLandmarks = -1;
+	long hashSum = -1;
 	public boolean restimateTransformation()
 	{
-//		if ( landmarkModel.getActiveRowCount() < 4 )
-//		{
-//			return false;
-//		}
-		// TODO restimateTransformation
-		// This distinction is unnecessary right now, because
-		// transferUpdatesToModel just calls initTransformation.. but this may
-		// change
-//		if ( landmarkModel.getTransform() == null )
-//			landmarkModel.initTransformation();
-//		else
-//			landmarkModel.transferUpdatesToModel();
+        List<Boolean> changeFlags = landmarkModel.getChangedSinceWarp();
+        Optional<Boolean> anyChanged = changeFlags.stream().reduce((a, b) -> a || b);
 
-        if( landmarkModel.getActiveRowCount() != lastNumLandmarks ) {// FIXME, this needs to check if the landmarks have changed at all
+        if( !anyChanged.isPresent() || anyChanged.get() ||  landmarkModel.getActiveRowCount() != lastNumLandmarks ) {
             solverThread.requestResolve(true, -1, null);
             lastNumLandmarks = landmarkModel.getActiveRowCount();
         }
-		//this.currentTransform =
-
-
-//		// display the warped version automatically if this is the first
-//		// time the transform was computed
-//		if ( firstWarpEstimation )
-//		{
-//			setUpdateWarpOnChange( true );
-//			firstWarpEstimation = false;
-//		}
 
 		viewerP.requestRepaint();
 		viewerQ.requestRepaint();
@@ -2720,7 +2701,7 @@ public class BigWarp< T >
 					// pair was added.
 					// if we changed and existing row, then we have both points
 					// in the pair and should recompute
-					BigWarp.this.restimateTransformation();// FIXME update this transform when nails added
+					BigWarp.this.restimateTransformation();
 				}
 
 				if( wasNewRowAdded )
@@ -2796,7 +2777,9 @@ public class BigWarp< T >
 			if( BigWarp.this.currentTransform == null )
 				BigWarp.this.restimateTransformation();
 
-			// FIXME This method has been overridden
+			System.out.println("Add fixed point in moving " + isMovingImage + " transform enabled " + viewerP.getTransformEnabled() );
+
+			// FIXME This method has been overridden NOTE getTransformEnabled does not behave as expected this clause seems to be useless
 			if ( isMovingImage && viewerP.getTransformEnabled() )
 			{
 				// Here we clicked in the space of the moving image
@@ -2805,11 +2788,23 @@ public class BigWarp< T >
 				addPoint( ptarrayLoc, true, viewerP );
 				addPoint( ptBackLoc, false, viewerQ );
 			}
-			else
+			else if( isMovingImage )// assumed transform enabled
 			{
 				currentLandmark.localize( ptarrayLoc );
 
 				BigWarp.this.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
+				addPoint( ptarrayLoc, true, viewerP );
+
+				// can use this to sanity check, but the P points need to be stored in transformed coords
+				//addPoint( ptarrayLoc, true, viewerP );
+
+				addPoint( ptBackLoc, false, viewerQ );
+			}
+			else
+            {
+				currentLandmark.localize( ptarrayLoc );
+
+				BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);
 				addPoint( ptBackLoc, true, viewerP );
 
 				// can use this to sanity check, but the P points need to be stored in transformed coords
@@ -2817,6 +2812,8 @@ public class BigWarp< T >
 
 				addPoint( ptarrayLoc, false, viewerQ );
 			}
+
+
 			if ( updateWarpOnPtChange )
 				BigWarp.this.restimateTransformation();
 
