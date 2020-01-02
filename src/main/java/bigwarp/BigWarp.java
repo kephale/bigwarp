@@ -325,17 +325,12 @@ public class BigWarp< T >
 //	public RandomAccessibleInterval<DoubleType> min = null;
 	double transformScaleX = 1;
 	double transformScaleY = 1;
-	/* parameterize with picocli */
-	double minY = 1189.986083984375;
-	double maxY = 4233.8876953125;
 
 	long padding = 2000;
 	private net.imagej.ImageJ imagej;
     //private Img<RealType> sourceCostImg;
     private RandomAccessibleInterval<RealType> sourceCostImg;
-    public long originalDimX;
-    public long originalDimZ;
-	private FinalInterval fullSizeInterval;
+    private FinalInterval fullSizeInterval;
 	private int numScales;
 	private RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps;
 	private boolean useVolatile;
@@ -2813,10 +2808,13 @@ public class BigWarp< T >
 			else
 			{
 				currentLandmark.localize( ptarrayLoc );
-				BigWarp.this.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
 
-				//addPoint( ptarrayLoc, true, viewerP );
+				BigWarp.this.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
 				addPoint( ptBackLoc, true, viewerP );
+
+				// can use this to sanity check, but the P points need to be stored in transformed coords
+				//addPoint( ptarrayLoc, true, viewerP );
+
 				addPoint( ptarrayLoc, false, viewerQ );
 			}
 			if ( updateWarpOnPtChange )
@@ -3251,13 +3249,13 @@ public class BigWarp< T >
                         double minY, maxY;
 
                         //final RandomAccessibleInterval<IntType> maxUnsignedShorts = getScaledSurfaceMap(getTopImg(costImg, ops), costImg.dimension(2)/2, originalDimX, originalDimZ, ops);
-                        Pair<RandomAccessibleInterval<IntType>, DoubleType> maxPair = getScaledSurfaceMapAndAverage(getTopImg(costImg, bw.imagej.op()), costImg.dimension(2) / 2, bw.originalDimX, bw.originalDimZ, bw.imagej.op());
+                        Pair<RandomAccessibleInterval<IntType>, DoubleType> maxPair = getScaledSurfaceMapAndAverage(getTopImg(costImg, bw.imagej.op()), costImg.dimension(2) / 2, bw.fullSizeInterval.dimension(0), bw.fullSizeInterval.dimension(2), bw.imagej.op());
                         final RandomAccessibleInterval<IntType> maxUnsignedShorts = maxPair.getA();
                         maxY = maxPair.getB().getRealDouble();
                         logger.info("Done with top surface");
 
                         //final RandomAccessibleInterval<IntType> minUnsignedShorts = getScaledSurfaceMap(getBotImg(costImg, ops), 0, originalDimX, originalDimZ, ops);
-                        Pair<RandomAccessibleInterval<IntType>, DoubleType> minPair = getScaledSurfaceMapAndAverage(getBotImg(costImg, bw.imagej.op()), 0, bw.originalDimX, bw.originalDimZ, bw.imagej.op());
+                        Pair<RandomAccessibleInterval<IntType>, DoubleType> minPair = getScaledSurfaceMapAndAverage(getBotImg(costImg, bw.imagej.op()), 0, bw.fullSizeInterval.dimension(0), bw.fullSizeInterval.dimension(2), bw.imagej.op());
                         final RandomAccessibleInterval<IntType> minUnsignedShorts = minPair.getA();
                         minY = minPair.getB().getRealDouble();
                         logger.info("Done with bottom surface");
@@ -3279,8 +3277,8 @@ public class BigWarp< T >
 												Views.extendBorder(max),
 												new NLinearInterpolatorFactory<>()),
 										transformScale),
-								bw.minY,
-								bw.maxY);
+								minY,
+								maxY);
 
 						InvertibleRealTransform invXfm = ft;
 						bw.currentTransform = ft;
@@ -3949,8 +3947,6 @@ public class BigWarp< T >
 		bw.fullSizeInterval = Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]);
 		bw.sourceCostImg = sourceCostImg;
 		bw.restimateTransformation();
-		bw.originalDimX = originalDimX;
-		bw.originalDimZ = originalDimZ;
 		bw.numScales = numScales;
 		bw.rawMipmaps = rawMipmaps;
 		bw.useVolatile = useVolatile;
