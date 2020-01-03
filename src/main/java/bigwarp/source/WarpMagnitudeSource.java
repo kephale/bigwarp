@@ -50,8 +50,10 @@ public class WarpMagnitudeSource< T extends RealType< T >> implements Source< T 
 //					new long[]{ fixedsrc.min( 0 ), fixedsrc.min( 1 ) }, 
 //					new long[]{ fixedsrc.max( 0 ), fixedsrc.max( 1 ) });
 //		else
-		
-		String unit = sourceData.sources.get( sourceData.targetSourceIndices[ 0 ] ).getSpimSource().getVoxelDimensions().unit();
+
+		// FIXME unit fetching has been disabled
+		//String unit = sourceData.sources.get( sourceData.targetSourceIndices[ 0 ] ).getSpimSource().getVoxelDimensions().unit();
+		String unit = "px";
 		voxDims = new FinalVoxelDimensions( unit, 1.0, 1.0, 1.0 );
 
 		warpMagImg = new WarpMagnitudeRandomAccessibleInterval<T>( interval, t, null, null );

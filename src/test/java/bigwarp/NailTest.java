@@ -1,6 +1,7 @@
 package bigwarp;
 
 import bdv.ij.util.ProgressWriterIJ;
+import bdv.util.RandomAccessibleIntervalSource;
 import bdv.util.RandomAccessibleSource;
 import bdv.util.volatiles.SharedQueue;
 import bdv.viewer.Source;
@@ -54,8 +55,8 @@ public class NailTest {
         long[] dimensions = new long[3];
         originalVolumeRai.dimensions(dimensions);
 
-        Source flatVolumeRaiSource = new RandomAccessibleSource(flatVolumeRai, flatVolumeRai, new UnsignedByteType(), "FlatVolume");
-        Source originalVolumeRaiSource = new RandomAccessibleSource(originalVolumeRai, originalVolumeRai, new UnsignedByteType(), "OriginalVolume");
+        Source flatVolumeRaiSource = new RandomAccessibleIntervalSource(flatVolumeRai, new UnsignedByteType(), "FlatVolume");
+        Source originalVolumeRaiSource = new RandomAccessibleIntervalSource(originalVolumeRai, new UnsignedByteType(), "OriginalVolume");
 
         ProgressWriterIJ progress = new ProgressWriterIJ();
 
