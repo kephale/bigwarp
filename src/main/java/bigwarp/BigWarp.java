@@ -326,7 +326,7 @@ public class BigWarp< T >
 	double transformScaleX = 1;
 	double transformScaleY = 1;
 
-	long padding = 2000;
+	long padding = 20;
 	private net.imagej.ImageJ imagej;
     //private Img<RealType> sourceCostImg;
     private RandomAccessibleInterval<DoubleType> sourceCostImg;
@@ -335,6 +335,12 @@ public class BigWarp< T >
 	private RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps;
 	private boolean useVolatile;
 	private SharedQueue queue;
+	private RandomAccessibleInterval<DoubleType> minHeightmap;
+	private RandomAccessibleInterval<DoubleType> maxHeightmap;
+	private RandomAccessibleInterval<UnsignedByteType> cost;
+	private FinalVoxelDimensions voxelDimensions;
+	private double[][] scales;
+	private String name;
 
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2168,6 +2174,30 @@ public class BigWarp< T >
 		this.movingImageXml = movingImageXml;
 	}
 
+	public void setMinHeightmap(RandomAccessibleInterval<DoubleType> min) {
+		this.minHeightmap = min;
+	}
+
+	public void setMaxHeightmap(RandomAccessibleInterval<DoubleType> max) {
+		this.maxHeightmap = max;
+	}
+
+	public void setCost(RandomAccessibleInterval<UnsignedByteType> cost) {
+		this.cost = cost;
+	}
+
+	public void setVoxelDimensions(FinalVoxelDimensions voxelDimensions) {
+		this.voxelDimensions = voxelDimensions;
+	}
+
+	public void setScales(double[][] scales) {
+		this.scales = scales;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
 	public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
@@ -3232,161 +3262,57 @@ public class BigWarp< T >
 						//InvertibleRealTransform invXfm = bw.getTransformation( index );
 						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
 
-						RandomAccessibleInterval<DoubleType> costImg = bw.sourceCostImg;// Consider copying/cloning the sourceCostImg
+						RandomAccessibleInterval<DoubleType> costImg = bw.sourceCostImg;// Consider copying/cloning the sourceCostImg, its a cachedcellimg so factory isnt implemented
 
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
                         for( Double[] nail : nails ) {
                             BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
                         }
+                        final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(costImg, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 
 						//IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
 
-						//RandomAccessibleInterval<RealType> costImg = bw.sourceCostImg;
+						long[] dimensions = new long[3];
+						bw.fullSizeInterval.dimensions(dimensions);
 
-                        double minY, maxY;
+                        RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costDouble, bw.imagej.op()), 0, dimensions[0], dimensions[2], bw.imagej.op());
+						bw.minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+						DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
 
-                        //final RandomAccessibleInterval<IntType> maxUnsignedShorts = getScaledSurfaceMap(getTopImg(costImg, ops), costImg.dimension(2)/2, originalDimX, originalDimZ, ops);
-                        Pair<RandomAccessibleInterval<IntType>, DoubleType> maxPair = getScaledSurfaceMapAndAverage(getTopImg(costImg, bw.imagej.op()), costImg.dimension(2) / 2, bw.fullSizeInterval.dimension(0), bw.fullSizeInterval.dimension(2), bw.imagej.op());
-                        final RandomAccessibleInterval<IntType> maxInts = maxPair.getA();
-                        maxY = maxPair.getB().getRealDouble();
-                        logger.info("Done with top surface");
+						RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costDouble, bw.imagej.op()), bw.cost.dimension(2) / 2, dimensions[0], dimensions[2], bw.imagej.op());
+						bw.maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+						DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
 
-                        //final RandomAccessibleInterval<IntType> minUnsignedShorts = getScaledSurfaceMap(getBotImg(costImg, ops), 0, originalDimX, originalDimZ, ops);
-                        Pair<RandomAccessibleInterval<IntType>, DoubleType> minPair = getScaledSurfaceMapAndAverage(getBotImg(costImg, bw.imagej.op()), 0, bw.fullSizeInterval.dimension(0), bw.fullSizeInterval.dimension(2), bw.imagej.op());
-                        final RandomAccessibleInterval<IntType> minInts = minPair.getA();
-                        minY = minPair.getB().getRealDouble();
-                        logger.info("Done with bottom surface");
-
-                        // max/min should be a part of the BigWarp
-                        final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxInts, (a, d) -> d.setReal(a.getRealDouble()), new DoubleType());
-                        final RandomAccessibleInterval<DoubleType> min = Converters.convert(minInts, (a, d) -> d.setReal(a.getRealDouble()), new DoubleType());
-
-                        System.out.println("minY is " +  minY + " and maxY is " + maxY);
+                        System.out.println("minY is " +  minMean.get() + " and maxY is " + maxMean.get());
 
 						final FlattenTransform ft = new FlattenTransform(
 								RealViews.affine(
 										Views.interpolate(
-												Views.extendBorder(min),
+												Views.extendBorder(bw.minHeightmap),
 												new NLinearInterpolatorFactory<>()),
 										transformScale),
 								RealViews.affine(
 										Views.interpolate(
-												Views.extendBorder(max),
+												Views.extendBorder(bw.maxHeightmap),
 												new NLinearInterpolatorFactory<>()),
 										transformScale),
-								minY,
-								maxY);
-
-
-						// debugging flatten transform
-//                        double[] source = new double[]{100, 100, 100};
-//                        double[] target = new double[3];
-//                        ft.apply(source, target);
-//                        System.out.println("Target " + target[0] + " " + target[1] + " " + target[2]);
+								minMean.get(),
+								maxMean.get());
 
                         bw.currentTransform = ft;
-
 						//bw.currentTransform = ft.inverse();// FIXME debug
 
-//						System.out.println( "ct   : " + bw.getCoordinateTransform());
-//						System.out.println( "tpsb : " + bw.getTpsBase());
-//						System.out.println( "tps  : " + bw.getTps());
-//						System.out.println( "xfm  : " + bw.getTransformation());
-
 						final FinalInterval cropInterval = new FinalInterval(
-						new long[] {0, 0, Math.round(minY) - bw.padding},
+						new long[] {0, 0, Math.round(minMean.get()) - bw.padding},
 						new long[] {bw.fullSizeInterval.dimension(0) - 1,
 									bw.fullSizeInterval.dimension(2) - 1,
-									Math.round(maxY) + bw.padding});
+									Math.round(maxMean.get()) + bw.padding});
 
-						@SuppressWarnings("unchecked")
-						final RandomAccessibleInterval<UnsignedByteType>[] mipmapsFlat = new RandomAccessibleInterval[bw.numScales];
-						@SuppressWarnings("unchecked")
-						final RandomAccessibleInterval<UnsignedByteType>[] mipmapsOriginal = new RandomAccessibleInterval[bw.numScales];
+						final Source<?>[] fAndO = makeFlatAndOriginalSource(bw.rawMipmaps, bw.scales, bw.voxelDimensions, bw.name, cropInterval, bw.useVolatile, bw.queue);
 
-						final double[][] scales = new double[bw.numScales][];
-
-						/*
-						 * transform, everything below needs update when transform changes
-						 * FIXME: remember to not use a cache for the flattened source
-						 */
-						for (int s = 0; s < bw.numScales; ++s) {
-
-							/* TODO read downsamplingFactors */
-							final int scale = 1 << s;
-							final double inverseScale = 1.0 / scale;
-
-							final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
-							final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
-							final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
-							transformSequenceFlat.add(shift);
-							transformSequenceFlat.add(ft.inverse());
-							transformSequenceFlat.add(shift.inverse());
-							transformSequenceFlat.add(scale3D);
-
-							final RandomAccessibleInterval<UnsignedByteType> flatSource =
-									Transform.createTransformedInterval(
-											Views.permute(bw.rawMipmaps[s], 1, 2),
-											cropInterval,
-											//scale3D,
-											transformSequenceFlat,
-											new UnsignedByteType(0));
-							final RandomAccessibleInterval<UnsignedByteType> originalSource =
-									Transform.createTransformedInterval(
-											Views.permute(bw.rawMipmaps[s], 1, 2),
-											cropInterval,
-											scale3D,
-											new UnsignedByteType(0));
-
-							final SubsampleIntervalView<UnsignedByteType> subsampledFlatSource = Views.subsample(flatSource, scale);
-							final RandomAccessibleInterval<UnsignedByteType> cachedFlatSource = Show.wrapAsVolatileCachedCellImg(subsampledFlatSource, new int[]{32, 32, 32});
-
-							final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
-							final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
-
-							if( bw.useVolatile ) {
-								mipmapsFlat[s] = cachedFlatSource;
-								mipmapsOriginal[s] = cachedOriginalSource;
-							} else {
-								mipmapsFlat[s] = subsampledFlatSource;
-								mipmapsOriginal[s] = subsampledOriginalSource;
-							}
-							scales[s] = new double[]{scale, scale, scale};
-						}
-
-						FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", new double[]{1, 1, 1});
-
-						/*
-						 * update when transforms change
-						 */
-						final RandomAccessibleIntervalMipmapSource<?> mipmapSourceFlat =
-								new RandomAccessibleIntervalMipmapSource<>(
-										mipmapsFlat,
-										new UnsignedByteType(),
-										scales,
-										voxelDimensions,
-										"datasetName");
-						final RandomAccessibleIntervalMipmapSource<?> mipmapSourceOriginal =
-								new RandomAccessibleIntervalMipmapSource<>(
-										mipmapsOriginal,
-										new UnsignedByteType(),
-										scales,
-										voxelDimensions,
-										"datasetName");
-
-						final Source<?> volatileMipmapSourceFlat;
-						final Source<?> volatileMipmapSourceOriginal;
-						if (bw.useVolatile) {
-							volatileMipmapSourceFlat = mipmapSourceFlat.asVolatile(bw.queue);
-							volatileMipmapSourceOriginal = mipmapSourceOriginal.asVolatile(bw.queue);
-						} else {
-							volatileMipmapSourceFlat = mipmapSourceFlat;
-							volatileMipmapSourceOriginal = mipmapSourceOriginal;
-						}
-
-						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{volatileMipmapSourceFlat},
-																			new Source[]{volatileMipmapSourceOriginal},
-																			new String[]{"Flat", "Original"});
+						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
+																			  new Source[]{fAndO[1]},
+																			  new String[]{"Flat", "Original"});
 
 						bw.data = bwData;
 
@@ -3462,13 +3388,94 @@ public class BigWarp< T >
 		
 	}
 
+	public static Source<?>[] makeFlatAndOriginalSource(RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps,
+												  double[][] scales,
+												  FinalVoxelDimensions voxelDimensions,
+												  String inputDataset,
+												  FinalInterval cropInterval,
+												  boolean useVolatile,
+												  SharedQueue queue) throws IOException {
+		@SuppressWarnings("unchecked")
+		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsFlat = new RandomAccessibleInterval[scales.length];
+		@SuppressWarnings("unchecked")
+		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsOriginal = new RandomAccessibleInterval[scales.length];
+
+		for (int s = 0; s < scales.length; ++s) {
+
+			final int scale = (int) scales[s][0];
+			final double inverseScale = 1.0 / scale;
+
+			final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
+			final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
+
+			final RandomAccessibleInterval<UnsignedByteType> flatSource =
+					Transform.createTransformedInterval(
+							Views.permute(rawMipmaps[s], 1, 2),
+							cropInterval,
+							scale3D,
+							//transformSequenceFlat,
+							new UnsignedByteType(0));
+			final RandomAccessibleInterval<UnsignedByteType> originalSource =
+					Transform.createTransformedInterval(
+							Views.permute(rawMipmaps[s], 1, 2),
+							cropInterval,
+							scale3D,
+							new UnsignedByteType(0));
+
+			final SubsampleIntervalView<UnsignedByteType> subsampledFlatSource = Views.subsample(flatSource, scale);
+			final RandomAccessibleInterval<UnsignedByteType> cachedFlatSource = Show.wrapAsVolatileCachedCellImg(subsampledFlatSource, new int[]{32, 32, 32});
+
+			final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
+			final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
+
+			if( useVolatile ) {
+				mipmapsFlat[s] = cachedFlatSource;
+				mipmapsOriginal[s] = cachedOriginalSource;
+			} else {
+				mipmapsFlat[s] = subsampledFlatSource;
+				mipmapsOriginal[s] = subsampledOriginalSource;
+			}
+			scales[s] = new double[]{scale, scale, scale};
+		}
+
+		/*
+		 * update when transforms change
+		 */
+		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceFlat =
+				new RandomAccessibleIntervalMipmapSource<>(
+						mipmapsFlat,
+						new UnsignedByteType(),
+						scales,
+						voxelDimensions,
+						inputDataset);
+		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceOriginal =
+				new RandomAccessibleIntervalMipmapSource<>(
+						mipmapsOriginal,
+						new UnsignedByteType(),
+						scales,
+						voxelDimensions,
+						inputDataset);
+
+		final Source<?> volatileMipmapSourceFlat;
+		final Source<?> volatileMipmapSourceOriginal;
+		if ( useVolatile ) {
+			volatileMipmapSourceFlat = mipmapSourceFlat.asVolatile(queue);
+			volatileMipmapSourceOriginal = mipmapSourceOriginal.asVolatile(queue);
+		} else {
+			volatileMipmapSourceFlat = mipmapSourceFlat;
+			volatileMipmapSourceOriginal = mipmapSourceOriginal;
+		}
+
+		return new Source<?>[]{volatileMipmapSourceFlat, volatileMipmapSourceOriginal};
+	}
+
 	// Add a nail to the costImg, costImg is at full scale and nail is in full scale coords
     private static void applyNail(RandomAccessibleInterval<DoubleType> costImg, Double[] nail, FinalInterval fullSizeInterval) {
         RandomAccess<DoubleType> ra = costImg.randomAccess();
 
         long[] scaledNail = new long[3];// in costImg dimensions
         for( int d = 0; d < scaledNail.length; d++ ) {
-        	scaledNail[d] = Math.round(costImg.dimension(d) * nail[d] / fullSizeInterval.dimension(0));
+        	scaledNail[d] = Math.round(costImg.dimension(d) * nail[d] / fullSizeInterval.dimension(d));
         }
 
         // Everything beyond here is in costImg dimensions
@@ -3752,11 +3759,7 @@ public class BigWarp< T >
 	}
 
 	public int getNumScales() {
-		return numScales;
-	}
-
-	public void setNumScales(int numScales) {
-		this.numScales = numScales;
+		return scales.length;
 	}
 
 	public RandomAccessibleInterval<UnsignedByteType>[] getRawMipmaps() {

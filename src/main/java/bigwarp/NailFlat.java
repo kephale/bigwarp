@@ -53,6 +53,7 @@ import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
+import static bigwarp.BigWarp.makeFlatAndOriginalSource;
 import static bigwarp.SemaUtils.flipCost;
 import static net.preibisch.surface.SurfaceFitCommand.*;
 
@@ -79,7 +80,7 @@ public class NailFlat implements Callable<Void> {
 	private double transformScaleY = 1;
 
 	private boolean useVolatile = true;
-	private long padding = 2000;
+	private long padding = 20;
 
 	FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", 1, 1, 1);
 
@@ -107,7 +108,7 @@ public class NailFlat implements Callable<Void> {
 			throw new IOException("Missing cost dataset");
 		}
         final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-        ImageJFunctions.wrap(costDouble, "CostDouble").show();
+        //ImageJFunctions.wrap(costDouble, "CostDouble").show();
 
         // Load/compute min heightmap and compute average value
 		final RandomAccessibleInterval<DoubleType> min;
@@ -121,7 +122,7 @@ public class NailFlat implements Callable<Void> {
 		} else {
 			throw new IOException("Missing min face and cost");
 		}
-		ImageJFunctions.wrap(min, "Min").show();
+		//ImageJFunctions.wrap(min, "Min").show();
 		DoubleType minMean = SemaUtils.getAvgValue(min);
 
 		// Load/compute max heightmap and compute average value
@@ -132,11 +133,11 @@ public class NailFlat implements Callable<Void> {
 		} else if( cost != null ) {
 			System.out.println("Computing max face");
 			RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costDouble, imagej.op()), cost.dimension(2) / 2, dimensions[0], dimensions[2], imagej.op());
-			max = Converters.convert(intMax, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());// TODO if max face is not provided then compute it
+			max = Converters.convert(intMax, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
 		} else {
 			throw new IOException("Missing max face and cost");
 		}
-		ImageJFunctions.wrap(max, "Max").show();
+		//ImageJFunctions.wrap(max, "Max").show();
 		DoubleType maxMean = SemaUtils.getAvgValue(max);
 
 		System.out.println("Mean min heightmap: " + minMean.get());
@@ -162,20 +163,31 @@ public class NailFlat implements Callable<Void> {
 		 * can be reused when transformation updates
 		 */
 		for (int s = 0; s < numScales; ++s) {
+			int scale = 1 << s;
+			String scaleDataset = inputDataset + "/s" + s;
 
-			/* TODO read downsamplingFactors */
-			final int scale = 1 << s;
-			final double inverseScale = 1.0 / scale;
+			if( s > 0 ) {
+				int[] downsamplingFactors = n5.getAttribute(scaleDataset, "downsamplingFactors", int[].class);
+				scale = downsamplingFactors[0];
+			}
+			double inverseScale = 1.0 / scale;
 
 			rawMipmaps[s] =
 					N5Utils.openVolatile(
 							n5,
-							inputDataset + "/s" + s);
-		}
+							scaleDataset);
 
-		/*
-		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{flatVolumeRaiSource},
-                                                                   new Source[]{originalVolumeRaiSource},
+			scales[s] = new double[]{scale, scale, scale};
+		}
+		System.out.println("Done reading rawMipmaps");
+
+		final int numProc = Runtime.getRuntime().availableProcessors();
+		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
+		final Source<?>[] fAndO = makeFlatAndOriginalSource(rawMipmaps, scales, voxelDimensions, inputDataset, cropInterval, useVolatile, queue);
+
+
+		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
+                                                                   new Source[]{fAndO[1]},
                                                                    new String[]{"Flat", "Original"});
 
 		ProgressWriterIJ progress = new ProgressWriterIJ();
@@ -184,20 +196,23 @@ public class NailFlat implements Callable<Void> {
 		BigWarp bw = new BigWarp( bwData, n5.getBasePath(), progress );
 
 		bw.setImagej(imagej);
-
 		bw.setIsMovingDisplayTransformed(true);
 		bw.setFullSizeInterval(Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]));
 		bw.setSourceCostImg(costDouble);
 		bw.restimateTransformation();
-		bw.setNumScales(numScales);
-		bw.setRawMipmaps(rawMipMaps);
+		bw.setRawMipmaps(rawMipmaps);
+		bw.setUseVolatile(useVolatile);
+		bw.setQueue(queue);
+		bw.setMinHeightmap(min);
+		bw.setMaxHeightmap(max);
+		bw.setCost(cost);
+		bw.setVoxelDimensions(voxelDimensions);
+		bw.setScales(scales);
+		bw.setName(inputDataset);
 		bw.setUseVolatile(useVolatile);
 
-		final int numProc = Runtime.getRuntime().availableProcessors();
-		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
-		bw.setQueue(queue);
-
-		 */
 		return null;
 	}
+
+
 }
