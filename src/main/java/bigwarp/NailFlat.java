@@ -27,11 +27,14 @@ import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import mpicbg.spim.data.SpimDataException;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
 import net.imglib2.FinalInterval;
+import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.converter.Converters;
+import net.imglib2.img.Img;
 import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.realtransform.*;
+import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
@@ -54,6 +57,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
 import static bigwarp.BigWarp.makeFlatAndOriginalSource;
+import static bigwarp.SemaUtils.copyRealInto;
 import static bigwarp.SemaUtils.flipCost;
 import static net.preibisch.surface.SurfaceFitCommand.*;
 
@@ -107,7 +111,11 @@ public class NailFlat implements Callable<Void> {
         	//System.out.println("Missing cost dataset");
 			throw new IOException("Missing cost dataset");
 		}
-        final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+
+		FinalInterval ivl = Intervals.createMinMax(0, 0, 0, cost.dimension(0), cost.dimension(1), cost.dimension(2));
+		Img<DoubleType> costDouble = imagej.op().create().img(ivl, new DoubleType());
+        copyRealInto(cost, costDouble);
+        //final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
         //ImageJFunctions.wrap(costDouble, "CostDouble").show();
 
         // Load/compute min heightmap and compute average value
@@ -183,7 +191,7 @@ public class NailFlat implements Callable<Void> {
 
 		final int numProc = Runtime.getRuntime().availableProcessors();
 		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
-		final Source<?>[] fAndO = makeFlatAndOriginalSource(rawMipmaps, scales, voxelDimensions, inputDataset, cropInterval, useVolatile, queue);
+		final Source<?>[] fAndO = makeFlatAndOriginalSource(rawMipmaps, scales, voxelDimensions, inputDataset, cropInterval, useVolatile, null, queue);
 
 
 		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
@@ -213,6 +221,8 @@ public class NailFlat implements Callable<Void> {
 
 		return null;
 	}
+
+
 
 
 }

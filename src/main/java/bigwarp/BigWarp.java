@@ -3268,18 +3268,18 @@ public class BigWarp< T >
                         for( Double[] nail : nails ) {
                             BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
                         }
-                        final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(costImg, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+                        //final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(costImg, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 
-						//IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
+						IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
 
 						long[] dimensions = new long[3];
 						bw.fullSizeInterval.dimensions(dimensions);
 
-                        RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costDouble, bw.imagej.op()), 0, dimensions[0], dimensions[2], bw.imagej.op());
+                        RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costImg, bw.imagej.op()), 0, dimensions[0], dimensions[2], bw.imagej.op());
 						bw.minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 						DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
 
-						RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costDouble, bw.imagej.op()), bw.cost.dimension(2) / 2, dimensions[0], dimensions[2], bw.imagej.op());
+						RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costImg, bw.imagej.op()), bw.cost.dimension(2) / 2, dimensions[0], dimensions[2], bw.imagej.op());
 						bw.maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 						DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
 
@@ -3308,7 +3308,7 @@ public class BigWarp< T >
 									bw.fullSizeInterval.dimension(2) - 1,
 									Math.round(maxMean.get()) + bw.padding});
 
-						final Source<?>[] fAndO = makeFlatAndOriginalSource(bw.rawMipmaps, bw.scales, bw.voxelDimensions, bw.name, cropInterval, bw.useVolatile, bw.queue);
+						final Source<?>[] fAndO = makeFlatAndOriginalSource(bw.rawMipmaps, bw.scales, bw.voxelDimensions, bw.name, cropInterval, bw.useVolatile, ft, bw.queue);
 
 						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
 																			  new Source[]{fAndO[1]},
@@ -3394,6 +3394,7 @@ public class BigWarp< T >
 												  String inputDataset,
 												  FinalInterval cropInterval,
 												  boolean useVolatile,
+												  FlattenTransform ft,
 												  SharedQueue queue) throws IOException {
 		@SuppressWarnings("unchecked")
 		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsFlat = new RandomAccessibleInterval[scales.length];
@@ -3407,13 +3408,19 @@ public class BigWarp< T >
 
 			final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
 			final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
+			final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
+			transformSequenceFlat.add(shift);
+			if( ft != null )
+				transformSequenceFlat.add(ft.inverse());
+			transformSequenceFlat.add(shift.inverse());
+			transformSequenceFlat.add(scale3D);
 
 			final RandomAccessibleInterval<UnsignedByteType> flatSource =
 					Transform.createTransformedInterval(
 							Views.permute(rawMipmaps[s], 1, 2),
 							cropInterval,
-							scale3D,
-							//transformSequenceFlat,
+							//scale3D,
+							transformSequenceFlat,
 							new UnsignedByteType(0));
 			final RandomAccessibleInterval<UnsignedByteType> originalSource =
 					Transform.createTransformedInterval(
@@ -3497,10 +3504,10 @@ public class BigWarp< T >
             ra.setPosition(pos);
 			double pre = ra.get().getRealDouble();
             if( y == scaledNail[1] ) {
-            	//System.out.println("Placing nail at " + y + " was " + ra.get().getRealDouble() + " now 0");
-                ra.get().set(new DoubleType(0));
+//            	System.out.println("Placing nail at " + y + " was " + ra.get().getRealDouble() + " now 0");
+            	ra.get().setReal(0);
             } else {
-                ra.get().set(new DoubleType(Double.MAX_VALUE));
+            	ra.get().setReal(Double.MAX_VALUE);
             }
             double post = ra.get().getRealDouble();
             //if( pre != post ) System.out.println("Updating Y at " + y + " was " + pre + " now is " + post );

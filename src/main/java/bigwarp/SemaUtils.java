@@ -11,6 +11,7 @@ import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.type.Type;
 import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.IntType;
+import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.view.IntervalView;
 import net.imglib2.view.Views;
@@ -19,6 +20,24 @@ import java.util.Iterator;
 import java.util.Random;
 
 public class SemaUtils {
+
+    public static void copyRealInto(RandomAccessibleInterval<UnsignedByteType> cost, RandomAccessibleInterval<DoubleType> costDouble) {
+		RandomAccess<UnsignedByteType> sRA = cost.randomAccess();
+		RandomAccess<DoubleType> tRA = costDouble.randomAccess();
+
+		long[] p = new long[3];
+		for( p[0] = 0; p[0] < cost.dimension(0); p[0]++ ) {
+			for( p[1] = 0; p[1] < cost.dimension(1); p[1]++ ) {
+				for( p[2] = 0; p[2] < cost.dimension(2); p[2]++ ) {
+					tRA.setPosition(p);
+					sRA.setPosition(p);
+
+					tRA.get().set(sRA.get().getRealDouble());
+				}
+			}
+		}
+	}
+
     public static Img<RealType> readAndFlipCost(String directory) {
         ImagePlus imp = FolderOpener.open(directory, " file=tif");
         //imp.setTitle("Target");

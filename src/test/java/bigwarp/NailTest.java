@@ -80,7 +80,7 @@ public class NailTest {
 
 		bw.setSourceCostImg(costRaiDouble);
 		bw.restimateTransformation();
-		bw.setNumScales(1);
+		//bw.setNumScales(1);
 		bw.setRawMipmaps(null);
 		bw.setUseVolatile(useVolatile);
 		bw.setQueue(queue);
