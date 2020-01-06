@@ -16,6 +16,7 @@
  */
 package bigwarp;
 
+import bdv.ij.util.ProgressWriterIJ;
 import bdv.util.BdvOptions;
 import bdv.util.BdvStackSource;
 import bdv.util.RandomAccessibleIntervalMipmapSource;
@@ -23,15 +24,19 @@ import bdv.util.volatiles.SharedQueue;
 import bdv.viewer.Source;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
+import mpicbg.spim.data.SpimDataException;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
 import net.imglib2.FinalInterval;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.converter.Converters;
+import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.realtransform.*;
+import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
+import net.imglib2.util.Intervals;
 import net.imglib2.view.SubsampleIntervalView;
 import net.imglib2.view.Views;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
@@ -48,6 +53,9 @@ import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
+import static bigwarp.SemaUtils.flipCost;
+import static net.preibisch.surface.SurfaceFitCommand.*;
+
 /**
  *
  *
@@ -55,88 +63,90 @@ import java.util.concurrent.ExecutionException;
  */
 public class NailFlat implements Callable<Void> {
 
-	/* parameterize with picocli */
-	private double minY = 1189.986083984375;
-	private double maxY = 4233.8876953125;
+	private String n5Path = "/nrs/flyem/alignment/kyle/nail_test.n5";
 
-	private long padding = 2000;
+	private String inputDataset = "/volumes/input";
 
-	//@Option(names = {"--minFaceFile"}, required = false, description = "HDF5 file with min face, e.g. --minFaceFile /nrs/flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5")
-	private String minFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-bottom.h5";
+	private String minFaceDataset = "/heightmaps/min";
 
-	private String maxFaceFile = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/Sec04-top.h5";
-	private String rawN5 = "/groups/cardona/home/harringtonk/nrs_flyem/render/n5/Z1217_19m/Sec04/stacks";
-	private String datasetName = "/v1_1_affine_filtered_1_26365___20191217_153959";
+	private String maxFaceDataset = "/heightmaps/max";
+
+	private String costDataset = "/volumes/cost";
+
+	private String nailDataset = "/nails";
 
 	private double transformScaleX = 1;
 	private double transformScaleY = 1;
 
 	private boolean useVolatile = true;
+	private long padding = 2000;
 
-	FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", new double[]{1, 1, 1});
+	FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", 1, 1, 1);
 
-
-	public static final void main(final String... args) throws IOException, InterruptedException, ExecutionException {
-
+	public static void main(final String... args) throws IOException, InterruptedException, ExecutionException, SpimDataException {
 		//CommandLine.call(new NailFlat(), args);
 		new NailFlat().call();
 	}
 
 
 	@Override
-	public final Void call() throws IOException, InterruptedException, ExecutionException {
+	public final Void call() throws IOException, InterruptedException, ExecutionException, SpimDataException {
+		net.imagej.ImageJ imagej = new net.imagej.ImageJ();
+		final N5FSReader n5 = new N5FSReader(n5Path);
 
-		/*
-		 * transformation
-		 */
-		final IHDF5Reader hdf5ReaderMax = HDF5Factory.openForReading(maxFaceFile);
-		final IHDF5Reader hdf5ReaderMin = HDF5Factory.openForReading(minFaceFile);
-//		final IHDF5Reader hdf5ReaderTop = HDF5Factory.openForReading("/home/saalfeld/projects/flyem/Sec04-top.h5");
-//		final IHDF5Reader hdf5ReaderBot = HDF5Factory.openForReading("/home/saalfeld/projects/flyem/Sec04-bottom.h5");
-		final N5HDF5Reader hdf5Max = new N5HDF5Reader(hdf5ReaderMax, new int[] {128, 128, 128});
-		final N5HDF5Reader hdf5Min = new N5HDF5Reader(hdf5ReaderMin, new int[] {128, 128, 128});
+		// Extract metadata from input
+		final int numScales = n5.list(inputDataset).length;
+		final long[] dimensions = n5.getDatasetAttributes(inputDataset + "/s0").getDimensions();
 
-		System.out.println(Arrays.toString(hdf5Max.listAttributes("/").keySet().toArray()));
-		System.out.println(hdf5Max.getDatasetAttributes("/volume").getDataType());
+		// Load cost
+        RandomAccessibleInterval<UnsignedByteType> cost = null;
+        if( n5.exists(costDataset) ) {
+			cost = N5Utils.open(n5, costDataset + "/s0");
+		} else {
+        	//System.out.println("Missing cost dataset");
+			throw new IOException("Missing cost dataset");
+		}
+        final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+        ImageJFunctions.wrap(costDouble, "CostDouble").show();
 
-		final RandomAccessibleInterval<FloatType> maxFloats = N5Utils.openVolatile(hdf5Max, "/volume");
-		final RandomAccessibleInterval<FloatType> minFloats = N5Utils.openVolatile(hdf5Min, "/volume");
+        // Load/compute min heightmap and compute average value
+		final RandomAccessibleInterval<DoubleType> min;
+		if( n5.exists(minFaceDataset) ) {
+			System.out.println("Loading min face");
+			min = N5Utils.open(n5, minFaceDataset);
+		} else if( cost != null ) {
+			System.out.println("Computing min face");
+			RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costDouble, imagej.op()), 0, dimensions[0], dimensions[2], imagej.op());
+			min = Converters.convert(intMin, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+		} else {
+			throw new IOException("Missing min face and cost");
+		}
+		ImageJFunctions.wrap(min, "Min").show();
+		DoubleType minMean = SemaUtils.getAvgValue(min);
 
-		final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxFloats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-		final RandomAccessibleInterval<DoubleType> min = Converters.convert(minFloats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+		// Load/compute max heightmap and compute average value
+		final RandomAccessibleInterval<DoubleType> max;
+		if( n5.exists(maxFaceDataset) ) {
+			System.out.println("Loading max face");
+			max = N5Utils.open(n5, maxFaceDataset);
+		} else if( cost != null ) {
+			System.out.println("Computing max face");
+			RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costDouble, imagej.op()), cost.dimension(2) / 2, dimensions[0], dimensions[2], imagej.op());
+			max = Converters.convert(intMax, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());// TODO if max face is not provided then compute it
+		} else {
+			throw new IOException("Missing max face and cost");
+		}
+		ImageJFunctions.wrap(max, "Max").show();
+		DoubleType maxMean = SemaUtils.getAvgValue(max);
 
-		final Scale2D transformScale = new Scale2D(transformScaleX, transformScaleY);
-
-		final FlattenTransform ft = new FlattenTransform(
-				RealViews.affine(
-						Views.interpolate(
-								Views.extendBorder(min),
-								new NLinearInterpolatorFactory<>()),
-						transformScale),
-				RealViews.affine(
-						Views.interpolate(
-								Views.extendBorder(max),
-								new NLinearInterpolatorFactory<>()),
-						transformScale),
-				minY,
-				maxY);
-
-		/*
-		 * raw data
-		 */
-		final int numProc = Runtime.getRuntime().availableProcessors();
-		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
-
-		final N5FSReader n5 = new N5FSReader(rawN5);
-
-		final long[] dimensions = n5.getDatasetAttributes(datasetName + "/s0").getDimensions();
+		System.out.println("Mean min heightmap: " + minMean.get());
+		System.out.println("Mean max heightmap: " + maxMean.get());
 
 		final FinalInterval cropInterval = new FinalInterval(
-				new long[] {0, 0, Math.round(minY) - padding},
-				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxY) + padding});
+				new long[] {0, 0, Math.round(minMean.get()) - padding},
+				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxMean.get()) + padding});
 
-		final int numScales = n5.list(datasetName).length;
-
+		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
 		final RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = new RandomAccessibleInterval[numScales];
 
@@ -160,97 +170,34 @@ public class NailFlat implements Callable<Void> {
 			rawMipmaps[s] =
 					N5Utils.openVolatile(
 							n5,
-							datasetName + "/s" + s);
-		}
-
-
-		BdvStackSource<?> bdvFlat = null;
-		BdvStackSource<?> bdvOriginal = null;
-
-		/*
-		 * transform, everything below needs update when transform changes
-		 */
-		for (int s = 0; s < numScales; ++s) {
-
-			/* TODO read downsamplingFactors */
-			final int scale = 1 << s;
-			final double inverseScale = 1.0 / scale;
-
-			final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
-			final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
-			final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
-			transformSequenceFlat.add(shift);
-			transformSequenceFlat.add(ft.inverse());
-			transformSequenceFlat.add(shift.inverse());
-			transformSequenceFlat.add(scale3D);
-
-			final RandomAccessibleInterval<UnsignedByteType> flatSource =
-					Transform.createTransformedInterval(
-							Views.permute(rawMipmaps[s], 1, 2),
-							cropInterval,
-							transformSequenceFlat,
-							new UnsignedByteType(0));
-			final RandomAccessibleInterval<UnsignedByteType> originalSource =
-					Transform.createTransformedInterval(
-							Views.permute(rawMipmaps[s], 1, 2),
-							cropInterval,
-							scale3D,
-							new UnsignedByteType(0));
-
-			final SubsampleIntervalView<UnsignedByteType> subsampledFlatSource = Views.subsample(flatSource, scale);
-			final RandomAccessibleInterval<UnsignedByteType> cachedFlatSource = Show.wrapAsVolatileCachedCellImg(subsampledFlatSource, new int[]{32, 32, 32});
-
-			final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
-			final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
-
-			mipmapsFlat[s] = cachedFlatSource;
-			mipmapsOriginal[s] = cachedOriginalSource;
-			scales[s] = new double[]{scale, scale, scale};
+							inputDataset + "/s" + s);
 		}
 
 		/*
-		 * update when transforms change
+		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{flatVolumeRaiSource},
+                                                                   new Source[]{originalVolumeRaiSource},
+                                                                   new String[]{"Flat", "Original"});
+
+		ProgressWriterIJ progress = new ProgressWriterIJ();
+
+		@SuppressWarnings( "unchecked" )
+		BigWarp bw = new BigWarp( bwData, n5.getBasePath(), progress );
+
+		bw.setImagej(imagej);
+
+		bw.setIsMovingDisplayTransformed(true);
+		bw.setFullSizeInterval(Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]));
+		bw.setSourceCostImg(costDouble);
+		bw.restimateTransformation();
+		bw.setNumScales(numScales);
+		bw.setRawMipmaps(rawMipMaps);
+		bw.setUseVolatile(useVolatile);
+
+		final int numProc = Runtime.getRuntime().availableProcessors();
+		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
+		bw.setQueue(queue);
+
 		 */
-		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceFlat =
-				new RandomAccessibleIntervalMipmapSource<>(
-						mipmapsFlat,
-						new UnsignedByteType(),
-						scales,
-						voxelDimensions,
-						datasetName);
-		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceOriginal =
-				new RandomAccessibleIntervalMipmapSource<>(
-						mipmapsOriginal,
-						new UnsignedByteType(),
-						scales,
-						voxelDimensions,
-						datasetName);
-
-		final Source<?> volatileMipmapSourceFlat;
-		final Source<?> volatileMipmapSourceOriginal;
-		if (useVolatile) {
-			volatileMipmapSourceFlat = mipmapSourceFlat.asVolatile(queue);
-			volatileMipmapSourceOriginal = mipmapSourceOriginal.asVolatile(queue);
-		} else {
-			volatileMipmapSourceFlat = mipmapSourceFlat;
-			volatileMipmapSourceOriginal = mipmapSourceOriginal;
-		}
-
-		bdvFlat = Show.mipmapSource(volatileMipmapSourceFlat, bdvFlat, BdvOptions.options().screenScales(new double[] {0.5}).numRenderingThreads(10).frameTitle("Flattened"));
-		bdvOriginal = Show.mipmapSource(volatileMipmapSourceOriginal, bdvOriginal, BdvOptions.options().screenScales(new double[] {0.5}).numRenderingThreads(10).frameTitle("Original"));
-
-
-
-//		BdvFunctions.show(VolatileViews.wrapAsVolatile(topFloats, queue), "", BdvOptions.options().is2D());
-
-
-//		BdvFunctions.show(
-//				VolatileViews.wrapAsVolatile(
-//						imgXZY,
-//						queue),
-//				"img",
-//				BdvOptions.options().addTo(bdv));
-
 		return null;
 	}
 }

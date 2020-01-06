@@ -5,15 +5,18 @@ import ij.plugin.FolderOpener;
 import net.imglib2.Cursor;
 import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.converter.Converters;
 import net.imglib2.img.Img;
 import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.type.Type;
 import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.real.DoubleType;
+import net.imglib2.view.IntervalView;
 import net.imglib2.view.Views;
 
 import java.util.Iterator;
+import java.util.Random;
 
 public class SemaUtils {
     public static Img<RealType> readAndFlipCost(String directory) {
@@ -37,27 +40,30 @@ public class SemaUtils {
         return resliceImg;
     }
 
-    public static DoubleType getAvgValue(RandomAccessibleInterval<IntType> rai) throws Exception {
-        RandomAccess<IntType> ra = rai.randomAccess();
+    public static RandomAccessibleInterval<DoubleType> flipCost(RandomAccessibleInterval<? extends RealType> rai) {
+        IntervalView<? extends RealType> rotView = Views.invertAxis(Views.rotate(rai, 1, 2), 1);
+
+        return Converters.convert((RandomAccessibleInterval<RealType>) rotView, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+    }
+
+    public static DoubleType getAvgValue(RandomAccessibleInterval<DoubleType> rai) {
+        RandomAccess<DoubleType> ra = rai.randomAccess();
         long[] pos = new long[rai.numDimensions()];
         for( int k = 0; k < pos.length; k++ ) pos[k] = 0;
         ra.localize(pos);
         DoubleType avg = new DoubleType();
 
         long count = 0;
-        DoubleType tmp = new DoubleType();
+        double dAvg = 0;
         for( pos[0] = 0; pos[0] < rai.dimension(0); pos[0]++ ) {
             for( pos[1] = 0; pos[1] < rai.dimension(1); pos[1]++ ) {
-                ra.localize(pos);
-                tmp.setReal(ra.get().getRealDouble());
-                avg.add(tmp);
+                ra.setPosition(pos);
+                dAvg += ra.get().getRealDouble();
                 count++;
             }
         }
-        avg.div(new DoubleType(count));
 
-
-        return avg;
+        return new DoubleType(dAvg / count);
     }
 
     public static DoubleType getAvgValue(Iterable<DoubleType> ii) throws Exception {
