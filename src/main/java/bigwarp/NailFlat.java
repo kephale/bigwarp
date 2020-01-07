@@ -69,11 +69,16 @@ import static net.preibisch.surface.SurfaceFitCommand.*;
  */
 public class NailFlat implements Callable<Void> {
 
+	@Option(names = {"-i", "--container"}, required = true, description = "container path, e.g. -i $HOME/fib19.n5")
 	private String n5Path = "/nrs/flyem/alignment/kyle/nail_test.n5";
 
+	@Option(names = {"-d", "--dataset"}, required = true, description = "Input dataset -d '/slab-26'")
 	private String inputDataset = "/volumes/input";
+
+	@Option(names = {"-t", "--cost"}, required = true, description = "Cost dataset -t '/slab-26-cost'")
 	private String costDataset = "/volumes/cost";
 
+	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/slab-26-flatten'")
 	private String flattenDataset = "/flatten";
 
 	// These are subdatasets of flatten, such that multiple flattening attempts can be supported

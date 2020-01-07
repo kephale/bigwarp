@@ -190,7 +190,7 @@ public class BigWarp< T >
 
 	public static final int JACDET_SOURCE_ID = 1006827158;
 
-	protected BigWarpViewerOptions options;
+    protected BigWarpViewerOptions options;
 
 	protected BigWarpData data;
 
@@ -334,6 +334,9 @@ public class BigWarp< T >
 //	public RandomAccessibleInterval<DoubleType> min = null;
 	double transformScaleX = 1;
 	double transformScaleY = 1;
+
+	private static double nailPenalty = Double.MAX_VALUE;
+    //private static double nailPenalty = 1000;
 
 	long padding = 20;
 	private net.imagej.ImageJ imagej;
@@ -3570,7 +3573,7 @@ public class BigWarp< T >
 //            	System.out.println("Placing nail at " + y + " was " + ra.get().getRealDouble() + " now 0");
             	ra.get().setReal(0);
             } else {
-            	ra.get().setReal(Double.MAX_VALUE);
+            	ra.get().setReal(nailPenalty);
             }
             double post = ra.get().getRealDouble();
             //if( pre != post ) System.out.println("Updating Y at " + y + " was " + pre + " now is " + post );
