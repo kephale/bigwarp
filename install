@@ -1,0 +1,45 @@
+#!/bin/bash
+
+VERSION="0.0.5-SNAPSHOT"
+INSTALL_DIR=${1:-$(pwd)}
+OPSYS=${2:-"linux"}
+
+echo "Installing into $INSTALL_DIR"
+echo "Assuming operating system $OPSYS"
+
+# check for operating system
+if [[ "$OPSYS" == "linux" ]]; then
+  MEM=$(cat /proc/meminfo | grep MemTotal | sed s/^MemTotal:\\\s*\\\|\\\s\\+[^\\\s]*$//g)
+  MEM=$(($MEM/2/1024/1024))
+elif [[ "$OPSYS" == "osx" ]]; then
+  # sysctl returns total hardware memory size in bytes
+  MEM=$(sysctl hw.memsize | grep hw.memsize | sed s/hw.memsize://g)
+  MEM=$(($MEM/2/1024/1024/1024))
+else
+  echo "ERROR - Operating system (arg2) must be either linux or osx - EXITING"
+  exit
+fi
+
+# mvn clean install
+# temporary workaround for openjdk plus surefire bug
+_JAVA_OPTIONS=-Djdk.net.URLClassPath.disableClassPathURLCheck=true mvn clean install
+mvn -Dmdep.outputFile=cp.txt -Dmdep.includeScope=runtime dependency:build-classpath
+
+echo '#!/bin/bash' > nail-flat
+echo '' >> nail-flat
+echo "JAR=\$HOME/.m2/repository/org/janelia/saalfeldlab/n5-utils/${VERSION}/n5-utils-${VERSION}.jar" >> nail-flat
+echo 'java \' >> nail-flat
+echo "  -Xmx${MEM}g \\" >> nail-flat
+echo '  -XX:+UseConcMarkSweepGC \' >> nail-flat
+echo -n '  -cp $JAR:' >> nail-flat
+echo -n $(cat cp.txt) >> nail-flat
+echo ' \' >> nail-flat
+echo '  bigwarp.NailFlat "$@"' >> nail-flat
+
+chmod a+x nail-flat
+rm cp.txt
+
+mkdir -p $INSTALL_DIR
+mv nail-flat $INSTALL_DIR/
+
+
