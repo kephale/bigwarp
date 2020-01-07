@@ -48,8 +48,15 @@ import net.imagej.ImgPlus;
 import net.imagej.ops.OpService;
 import net.imglib2.*;
 import net.imglib2.RandomAccess;
+import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.converter.Converters;
 import net.imglib2.img.Img;
+import net.imglib2.img.array.ArrayImg;
+import net.imglib2.img.array.ArrayImgs;
+import net.imglib2.img.array.ArrayRandomAccess;
+import net.imglib2.img.basictypeaccess.array.DoubleArray;
+import net.imglib2.img.cell.Cell;
+import net.imglib2.img.cell.CellRandomAccess;
 import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.realtransform.*;
@@ -67,7 +74,9 @@ import org.apache.log4j.Logger;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
 import org.janelia.saalfeldlab.hotknife.util.Show;
 import org.janelia.saalfeldlab.hotknife.util.Transform;
+import org.janelia.saalfeldlab.n5.GzipCompression;
 import org.janelia.saalfeldlab.n5.N5FSReader;
+import org.janelia.saalfeldlab.n5.N5FSWriter;
 import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.utility.ui.RepeatingReleasedEventsFixer;
@@ -341,6 +350,8 @@ public class BigWarp< T >
 	private FinalVoxelDimensions voxelDimensions;
 	private double[][] scales;
 	private String name;
+	private String n5Path;
+	private String nailDataset;
 
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2198,6 +2209,44 @@ public class BigWarp< T >
 		this.name = name;
 	}
 
+	public void setN5Path(String n5Path) {
+		this.n5Path = n5Path;
+	}
+
+	public void setNailDataset(String s) {
+		this.nailDataset = s;
+	}
+
+	public void loadNails(String n5Path, String nailDataset) throws IOException, InterruptedException {
+
+		while( currentTransform == null ) {
+			Thread.sleep(20);
+		}
+
+		N5FSReader n5 = new N5FSReader(n5Path);
+
+		if( n5.exists(nailDataset) && n5.getDatasetAttributes(nailDataset).getDimensions()[0] > 0 ) {
+
+			CachedCellImg<DoubleType, ?> nailImg = N5Utils.open(n5, nailDataset, new DoubleType(0));
+
+			CellRandomAccess<DoubleType, ? extends Cell<?>> nira = nailImg.randomAccess();
+
+			long[] pos = new long[2];
+			for( int k = 0; k < nailImg.dimension(0); k++ ) {
+				double[] nail = new double[3];
+				pos[0] = k;
+				for( int d = 0; d < 3; d++ ) {
+					pos[1] = d;
+					nail[d] = nira.get().getRealDouble();
+				}
+				landmarkClickListenerQ.addFixedPoint(new RealPoint(nail), false);
+			}
+
+		} else {
+			System.out.println("No nails to load from " + n5Path);
+		}
+	}
+
 	public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
@@ -3265,9 +3314,23 @@ public class BigWarp< T >
 						RandomAccessibleInterval<DoubleType> costImg = bw.sourceCostImg;// Consider copying/cloning the sourceCostImg, its a cachedcellimg so factory isnt implemented
 
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
-                        for( Double[] nail : nails ) {
+						N5FSWriter n5 = new N5FSWriter(bw.n5Path);
+						ArrayImg<DoubleType, DoubleArray> nailImg = ArrayImgs.doubles(nails.size(), 3);
+						ArrayRandomAccess<DoubleType> nira = nailImg.randomAccess();
+                        //for( Double[] nail : nails ) {
+						long[] pos = new long[3];
+						for( int k = 0; k < nails.size(); k++ ) {
+							Double[] nail = nails.get(k);
                             BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
+                            pos[0] = k;
+                            for( int d = 0; d < 3; d++ ) {
+								pos[1] = d;
+								nira.setPosition(pos);
+								nira.get().set(nail[d]);
+							}
                         }
+						if( nails.size() > 0)
+							N5Utils.save(nailImg, n5, bw.nailDataset, new int[]{nails.size(), 3}, new GzipCompression());
                         //final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(costImg, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 
 						IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");

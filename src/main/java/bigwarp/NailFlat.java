@@ -69,15 +69,14 @@ import static net.preibisch.surface.SurfaceFitCommand.*;
 public class NailFlat implements Callable<Void> {
 
 	private String n5Path = "/nrs/flyem/alignment/kyle/nail_test.n5";
-
 	private String inputDataset = "/volumes/input";
-
-	private String minFaceDataset = "/heightmaps/min";
-
-	private String maxFaceDataset = "/heightmaps/max";
-
 	private String costDataset = "/volumes/cost";
 
+	private String flattenDataset = "/flatten";
+
+	// These are subdatasets of flatten, such that multiple flattening attempts can be supported
+	private String minFaceDataset = "/heightmaps/min";
+	private String maxFaceDataset = "/heightmaps/max";
 	private String nailDataset = "/nails";
 
 	private double transformScaleX = 1;
@@ -120,7 +119,7 @@ public class NailFlat implements Callable<Void> {
 
         // Load/compute min heightmap and compute average value
 		final RandomAccessibleInterval<DoubleType> min;
-		if( n5.exists(minFaceDataset) ) {
+		if( n5.exists(flattenDataset + minFaceDataset) ) {
 			System.out.println("Loading min face");
 			min = N5Utils.open(n5, minFaceDataset);
 		} else if( cost != null ) {
@@ -135,7 +134,7 @@ public class NailFlat implements Callable<Void> {
 
 		// Load/compute max heightmap and compute average value
 		final RandomAccessibleInterval<DoubleType> max;
-		if( n5.exists(maxFaceDataset) ) {
+		if( n5.exists(flattenDataset + maxFaceDataset) ) {
 			System.out.println("Loading max face");
 			max = N5Utils.open(n5, maxFaceDataset);
 		} else if( cost != null ) {
@@ -218,6 +217,13 @@ public class NailFlat implements Callable<Void> {
 		bw.setScales(scales);
 		bw.setName(inputDataset);
 		bw.setUseVolatile(useVolatile);
+		bw.setN5Path(n5Path);
+		bw.setNailDataset(flattenDataset + nailDataset);
+
+		//System.out.println(bw.getTransformation());
+		//bw.loadNails(n5Path, flattenDataset + nailDataset);// FIXME
+
+		// TODO add n5 and nail path for saving
 
 		return null;
 	}
