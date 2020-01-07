@@ -3354,7 +3354,7 @@ public class BigWarp< T >
 							N5Utils.save(nailImg, n5, bw.flattenDataset + nailDatasetName, new int[]{nails.size(), 3}, new GzipCompression());
                         //final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(costImg, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 
-						IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
+						//IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
 
 						long[] dimensions = new long[3];
 						bw.fullSizeInterval.dimensions(dimensions);
