@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="0.0.5-SNAPSHOT"
+VERSION="5.1.1-SNAPSHOT"
 INSTALL_DIR=${1:-$(pwd)}
 OPSYS=${2:-"linux"}
 
@@ -27,7 +27,7 @@ mvn -Dmdep.outputFile=cp.txt -Dmdep.includeScope=runtime dependency:build-classp
 
 echo '#!/bin/bash' > nail-flat
 echo '' >> nail-flat
-echo "JAR=\$HOME/.m2/repository/org/janelia/saalfeldlab/n5-utils/${VERSION}/n5-utils-${VERSION}.jar" >> nail-flat
+echo "JAR=\$HOME/.m2/repository/sc/fiji/bigwarp_fiji/${VERSION}/bigwarp_fiji-${VERSION}.jar" >> nail-flat
 echo 'java \' >> nail-flat
 echo "  -Xmx${MEM}g \\" >> nail-flat
 echo '  -XX:+UseConcMarkSweepGC \' >> nail-flat

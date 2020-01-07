@@ -29,6 +29,7 @@ import mpicbg.spim.data.sequence.FinalVoxelDimensions;
 import net.imglib2.FinalInterval;
 import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.converter.Converters;
 import net.imglib2.img.Img;
 import net.imglib2.img.display.imagej.ImageJFunctions;
@@ -45,12 +46,15 @@ import net.imglib2.view.Views;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
 import org.janelia.saalfeldlab.hotknife.util.Show;
 import org.janelia.saalfeldlab.hotknife.util.Transform;
+import org.janelia.saalfeldlab.n5.GzipCompression;
 import org.janelia.saalfeldlab.n5.N5FSReader;
+import org.janelia.saalfeldlab.n5.N5FSWriter;
 import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import picocli.CommandLine;
 import picocli.CommandLine.Option;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
@@ -75,11 +79,14 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"-d", "--dataset"}, required = true, description = "Input dataset -d '/slab-26'")
 	private String inputDataset = "/volumes/input";
 
-	@Option(names = {"-t", "--cost"}, required = true, description = "Cost dataset -t '/slab-26-cost'")
-	private String costDataset = "/volumes/cost";
+//	@Option(names = {"-t", "--cost"}, required = false, description = "Cost dataset -t '/slab-26-cost'")
+//	private String costDataset = "/volumes/cost";
 
 	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/slab-26-flatten'")
 	private String flattenDataset = "/flatten";
+
+	@Option(names = {"-s", "--sectionName"}, required = true, description = "Section name, must correspond to /nrs/flyem/alignment/Z1217-19m/VNC/<SectionName> -s 'Sec24'")
+	private String sectionName = "Sec24";
 
 	private double transformScaleX = 1;
 	private double transformScaleY = 1;
@@ -89,11 +96,14 @@ public class NailFlat implements Callable<Void> {
 
 	FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", 1, 1, 1);
 
-	public static void main(final String... args) throws IOException, InterruptedException, ExecutionException, SpimDataException {
-		//CommandLine.call(new NailFlat(), args);
-		new NailFlat().call();
+	public static final void main(final String... args) throws IOException, InterruptedException, ExecutionException, SpimDataException {
+		CommandLine.call(new NailFlat(), args);
+		//new NailFlat().call();
 	}
 
+	public static String sectionDirectory(String sectionName) {
+		return "/nrs/flyem/alignment/Z1217-19m/VNC/" + sectionName;
+	}
 
 	@Override
 	public final Void call() throws IOException, InterruptedException, ExecutionException, SpimDataException {
@@ -104,21 +114,22 @@ public class NailFlat implements Callable<Void> {
 		final int numScales = n5.list(inputDataset).length;
 		final long[] dimensions = n5.getDatasetAttributes(inputDataset + "/s0").getDimensions();
 
-		// Load cost
+//		// Load cost
         RandomAccessibleInterval<UnsignedByteType> cost = null;
-        if( n5.exists(costDataset) ) {
-            if( n5.exists(costDataset + "/s0") )
-			    cost = N5Utils.open(n5, costDataset + "/s0");
-            else
-                cost = N5Utils.open(n5, costDataset);
-		} else {
-        	//System.out.println("Missing cost dataset");
-			throw new IOException("Missing cost dataset");
-		}
+        final RandomAccessibleInterval<DoubleType> costDouble = null;
+//        if( n5.exists(costDataset) ) {
+//            if( n5.exists(costDataset + "/s0") )
+//			    cost = N5Utils.open(n5, costDataset + "/s0");
+//            else
+//                cost = N5Utils.open(n5, costDataset);
+//		} else {
+//        	System.out.println("Missing cost dataset in n5.");
+//			//throw new IOException("Missing cost dataset");
+//		}
 
-		FinalInterval ivl = Intervals.createMinMax(0, 0, 0, cost.dimension(0), cost.dimension(1), cost.dimension(2));
-		Img<DoubleType> costDouble = imagej.op().create().img(ivl, new DoubleType());
-        copyRealInto(cost, costDouble);
+//		FinalInterval ivl = Intervals.createMinMax(0, 0, 0, cost.dimension(0), cost.dimension(1), cost.dimension(2));
+//		Img<DoubleType> costDouble = imagej.op().create().img(ivl, new DoubleType());
+//        copyRealInto(cost, costDouble);
         //final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
         //ImageJFunctions.wrap(costDouble, "CostDouble").show();
 
@@ -126,6 +137,15 @@ public class NailFlat implements Callable<Void> {
 		final RandomAccessibleInterval<DoubleType> min;
 		if( n5.exists(flattenDataset + BigWarp.minFaceDatasetName) ) {
 			System.out.println("Loading min face");
+			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
+		} else if( new File(sectionDirectory(sectionName) + "/" + sectionName + "-bottom.h5").exists() ) {
+			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(sectionDirectory(sectionName) + "/" + sectionName + "-bottom.h5");
+			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[] {128, 128, 128});
+			final RandomAccessibleInterval<FloatType> floats = N5Utils.openVolatile(hdf5, "/volume");
+			RandomAccessibleInterval<DoubleType> minConv = Converters.convert(floats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+			N5FSWriter n5w = new N5FSWriter(n5Path);
+			N5Utils.save(minConv, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{512, 512}, new GzipCompression());
+
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
 		} else if( cost != null ) {
 			System.out.println("Computing min face");
@@ -141,6 +161,15 @@ public class NailFlat implements Callable<Void> {
 		final RandomAccessibleInterval<DoubleType> max;
 		if( n5.exists(flattenDataset + BigWarp.maxFaceDatasetName) ) {
 			System.out.println("Loading max face");
+			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
+		} else if( new File(sectionDirectory(sectionName) + "/" + sectionName + "-top.h5").exists() ) {
+			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(sectionDirectory(sectionName) + "/" + sectionName + "-top.h5");
+			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[] {128, 128, 128});
+			final RandomAccessibleInterval<FloatType> floats = N5Utils.openVolatile(hdf5, "/volume");
+			RandomAccessibleInterval<DoubleType> maxConv = Converters.convert(floats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+			N5FSWriter n5w = new N5FSWriter(n5Path);
+			N5Utils.save(maxConv, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{512, 512}, new GzipCompression());
+
 			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
 		} else if( cost != null ) {
 			System.out.println("Computing max face");
