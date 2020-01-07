@@ -81,8 +81,6 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/slab-26-flatten'")
 	private String flattenDataset = "/flatten";
 
-
-
 	private double transformScaleX = 1;
 	private double transformScaleY = 1;
 
@@ -157,8 +155,6 @@ public class NailFlat implements Callable<Void> {
 		System.out.println("Mean min heightmap: " + minMean.get());
 		System.out.println("Mean max heightmap: " + maxMean.get());
 
-
-
 		final FinalInterval cropInterval = new FinalInterval(
 				new long[] {0, 0, Math.round(minMean.get()) - padding},
 				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxMean.get()) + padding});
@@ -166,11 +162,6 @@ public class NailFlat implements Callable<Void> {
 		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
 		final RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = new RandomAccessibleInterval[numScales];
-
-		@SuppressWarnings("unchecked")
-		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsFlat = new RandomAccessibleInterval[numScales];
-		@SuppressWarnings("unchecked")
-		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsOriginal = new RandomAccessibleInterval[numScales];
 
 		final double[][] scales = new double[numScales][];
 
