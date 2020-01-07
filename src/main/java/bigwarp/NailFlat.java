@@ -64,11 +64,13 @@ import static net.preibisch.surface.SurfaceFitCommand.*;
 /**
  *
  *
+ * @author Kyle Harrington &lt;janelia@kyleharrington.com&gt;
  * @author Stephan Saalfeld &lt;saalfelds@janelia.hhmi.org&gt;
  */
 public class NailFlat implements Callable<Void> {
 
 	private String n5Path = "/nrs/flyem/alignment/kyle/nail_test.n5";
+
 	private String inputDataset = "/volumes/input";
 	private String costDataset = "/volumes/cost";
 
@@ -105,7 +107,10 @@ public class NailFlat implements Callable<Void> {
 		// Load cost
         RandomAccessibleInterval<UnsignedByteType> cost = null;
         if( n5.exists(costDataset) ) {
-			cost = N5Utils.open(n5, costDataset + "/s0");
+            if( n5.exists(costDataset + "/s0") )
+			    cost = N5Utils.open(n5, costDataset + "/s0");
+            else
+                cost = N5Utils.open(n5, costDataset);
 		} else {
         	//System.out.println("Missing cost dataset");
 			throw new IOException("Missing cost dataset");
@@ -222,8 +227,6 @@ public class NailFlat implements Callable<Void> {
 
 		//System.out.println(bw.getTransformation());
 		//bw.loadNails(n5Path, flattenDataset + nailDataset);// FIXME
-
-		// TODO add n5 and nail path for saving
 
 		return null;
 	}
