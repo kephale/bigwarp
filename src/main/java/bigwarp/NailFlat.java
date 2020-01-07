@@ -81,10 +81,7 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/slab-26-flatten'")
 	private String flattenDataset = "/flatten";
 
-	// These are subdatasets of flatten, such that multiple flattening attempts can be supported
-	private String minFaceDataset = "/heightmaps/min";
-	private String maxFaceDataset = "/heightmaps/max";
-	private String nailDataset = "/nails";
+
 
 	private double transformScaleX = 1;
 	private double transformScaleY = 1;
@@ -129,9 +126,9 @@ public class NailFlat implements Callable<Void> {
 
         // Load/compute min heightmap and compute average value
 		final RandomAccessibleInterval<DoubleType> min;
-		if( n5.exists(flattenDataset + minFaceDataset) ) {
+		if( n5.exists(flattenDataset + BigWarp.minFaceDatasetName) ) {
 			System.out.println("Loading min face");
-			min = N5Utils.open(n5, minFaceDataset);
+			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
 		} else if( cost != null ) {
 			System.out.println("Computing min face");
 			RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costDouble, imagej.op()), 0, dimensions[0], dimensions[2], imagej.op());
@@ -144,9 +141,9 @@ public class NailFlat implements Callable<Void> {
 
 		// Load/compute max heightmap and compute average value
 		final RandomAccessibleInterval<DoubleType> max;
-		if( n5.exists(flattenDataset + maxFaceDataset) ) {
+		if( n5.exists(flattenDataset + BigWarp.maxFaceDatasetName) ) {
 			System.out.println("Loading max face");
-			max = N5Utils.open(n5, maxFaceDataset);
+			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
 		} else if( cost != null ) {
 			System.out.println("Computing max face");
 			RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costDouble, imagej.op()), cost.dimension(2) / 2, dimensions[0], dimensions[2], imagej.op());
@@ -159,6 +156,8 @@ public class NailFlat implements Callable<Void> {
 
 		System.out.println("Mean min heightmap: " + minMean.get());
 		System.out.println("Mean max heightmap: " + maxMean.get());
+
+
 
 		final FinalInterval cropInterval = new FinalInterval(
 				new long[] {0, 0, Math.round(minMean.get()) - padding},
@@ -228,7 +227,7 @@ public class NailFlat implements Callable<Void> {
 		bw.setName(inputDataset);
 		bw.setUseVolatile(useVolatile);
 		bw.setN5Path(n5Path);
-		bw.setNailDataset(flattenDataset + nailDataset);
+		bw.setFlattenSubContainer(flattenDataset);
 
 		//System.out.println(bw.getTransformation());
 		//bw.loadNails(n5Path, flattenDataset + nailDataset);// FIXME

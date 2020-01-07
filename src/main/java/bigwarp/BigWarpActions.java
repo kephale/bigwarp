@@ -2,6 +2,7 @@ package bigwarp;
 
 import java.awt.Component;
 import java.awt.event.ActionEvent;
+import java.io.IOException;
 
 import javax.swing.ActionMap;
 import javax.swing.InputMap;
@@ -62,6 +63,7 @@ public class BigWarpActions
 
 	public static final String SAVE_WARPED = "save warped";
 	public static final String SAVE_WARPED_XML = "save warped xml";
+	public static final String SAVE_FLATTEN = "save flatten";
 
 	public static final String EXPORT_IP = "export imageplus";
 	public static final String EXPORT_WARP = "export warp field"; 
@@ -284,6 +286,7 @@ public class BigWarpActions
 		new ToggleDialogAction( SHOW_HELP, bw.helpDialog ).put( actionMap );
 
 		new SaveWarpedAction( bw ).put( actionMap );
+		new SaveFlattenAction( bw ).put( actionMap );
 		new SaveWarpedXmlAction( bw ).put( actionMap );
 		new ExportImagePlusAction( bw ).put( actionMap );
 		new ExportWarpAction( bw ).put( actionMap );
@@ -1055,6 +1058,27 @@ public class BigWarpActions
 		public void actionPerformed(ActionEvent e)
 		{
 			bw.saveMovingImageToFile();
+		}
+	}
+
+	public static class SaveFlattenAction extends AbstractNamedAction
+	{
+		private static final long serialVersionUID = 4965249994677649713L;
+
+		BigWarp bw;
+		public SaveFlattenAction( final BigWarp bw )
+		{
+			super( SAVE_FLATTEN );
+			this.bw = bw;
+		}
+		@Override
+		public void actionPerformed(ActionEvent e)
+		{
+			try {
+				bw.saveFlatten();
+			} catch (IOException ex) {
+				ex.printStackTrace();
+			}
 		}
 	}
 

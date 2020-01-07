@@ -354,9 +354,14 @@ public class BigWarp< T >
 	private double[][] scales;
 	private String name;
 	private String n5Path;
-	private String nailDataset;
 
-	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
+    // These are subdatasets of flatten, such that multiple flattening attempts can be supported
+    public static String minFaceDatasetName = "/heightmaps/min";
+	public static String maxFaceDatasetName = "/heightmaps/max";
+	public static String nailDatasetName = "/nails";
+    private String flattenDataset;
+
+    public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
 		this( data, windowTitle, BigWarpViewerOptions.options( ( detectNumDims( data.sources ) == 2 ) ), progressWriter );
 	}
@@ -1220,6 +1225,10 @@ public class BigWarp< T >
 		final JMenuItem saveExport = new JMenuItem( actionMap.get( BigWarpActions.SAVE_WARPED ) );
 		saveExport.setText( "Save warped image" );
 		landmarkMenu.add( saveExport );
+
+		final JMenuItem flattenExport = new JMenuItem( actionMap.get( BigWarpActions.SAVE_FLATTEN ) );
+		flattenExport.setText( "Save flattening" );
+		landmarkMenu.add( flattenExport );
 
 		if( ij != null )
 			setupImageJExportOption();
@@ -2216,10 +2225,6 @@ public class BigWarp< T >
 		this.n5Path = n5Path;
 	}
 
-	public void setNailDataset(String s) {
-		this.nailDataset = s;
-	}
-
 	public void loadNails(String n5Path, String nailDataset) throws IOException, InterruptedException {
 
 		while( currentTransform == null ) {
@@ -2227,6 +2232,8 @@ public class BigWarp< T >
 		}
 
 		N5FSReader n5 = new N5FSReader(n5Path);
+
+		nailDataset = flattenDataset + nailDatasetName;
 
 		if( n5.exists(nailDataset) && n5.getDatasetAttributes(nailDataset).getDimensions()[0] > 0 ) {
 
@@ -2250,7 +2257,18 @@ public class BigWarp< T >
 		}
 	}
 
-	public enum WarpVisType
+    public void saveFlatten() throws IOException {
+	    // TODO save flattening state
+        N5FSWriter n5 = new N5FSWriter(n5Path);
+        N5Utils.save( minHeightmap, n5, flattenDataset + minFaceDatasetName, new int[]{512, 512}, new GzipCompression() );
+        N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{512, 512}, new GzipCompression() );
+    }
+
+    public void setFlattenSubContainer(String flattenDataset) {
+	    this.flattenDataset = flattenDataset;
+    }
+
+    public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
 	};
@@ -3333,7 +3351,7 @@ public class BigWarp< T >
 							}
                         }
 						if( nails.size() > 0)
-							N5Utils.save(nailImg, n5, bw.nailDataset, new int[]{nails.size(), 3}, new GzipCompression());
+							N5Utils.save(nailImg, n5, bw.flattenDataset + nailDatasetName, new int[]{nails.size(), 3}, new GzipCompression());
                         //final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(costImg, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 
 						IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
