@@ -134,9 +134,19 @@
 			<id>scijava.public</id>
 			<url>https://maven.scijava.org/content/groups/public</url>
 		</repository>
+		<repository>
+            <id>janelia-releases</id>
+            <url>https://nexus.janelia.org/repository/maven-releases/</url>
+        </repository>
 	</repositories>
 
 	<dependencies>
+		<dependency>
+			<groupId>org.janelia</groupId>
+			<artifactId>java-lsf</artifactId>
+			<version>1.0.4</version>
+		</dependency>
+
 		<dependency>
 			<groupId>net.imagej</groupId>
 			<artifactId>imagej-ops</artifactId>

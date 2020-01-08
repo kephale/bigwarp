@@ -61,6 +61,7 @@ public class BigWarpActions
 	public static final String LOAD_LANDMARKS = "load landmarks";
 	public static final String SAVE_LANDMARKS = "save landmarks";
 
+	public static final String FINISH_PATCH_MODE = "finish patch mode";
 	public static final String SAVE_WARPED = "save warped";
 	public static final String SAVE_WARPED_XML = "save warped xml";
 	public static final String SAVE_FLATTEN = "save flatten";
@@ -287,6 +288,7 @@ public class BigWarpActions
 
 		new SaveWarpedAction( bw ).put( actionMap );
 		new SaveFlattenAction( bw ).put( actionMap );
+		new FinishPatchMode( bw ).put( actionMap );
 		new SaveWarpedXmlAction( bw ).put( actionMap );
 		new ExportImagePlusAction( bw ).put( actionMap );
 		new ExportWarpAction( bw ).put( actionMap );
@@ -1077,6 +1079,27 @@ public class BigWarpActions
 			try {
 				bw.saveFlatten();
 			} catch (IOException ex) {
+				ex.printStackTrace();
+			}
+		}
+	}
+
+	public static class FinishPatchMode extends AbstractNamedAction
+	{
+		private static final long serialVersionUID = 4965249994677649713L;
+
+		BigWarp bw;
+		public FinishPatchMode( final BigWarp bw )
+		{
+			super( FINISH_PATCH_MODE );
+			this.bw = bw;
+		}
+		@Override
+		public void actionPerformed(ActionEvent e)
+		{
+			try {
+				bw.finishPatchMode();
+			} catch (InterruptedException ex) {
 				ex.printStackTrace();
 			}
 		}

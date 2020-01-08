@@ -11,12 +11,12 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Consumer;
 
 import javax.swing.ActionMap;
 import javax.swing.InputMap;
@@ -360,8 +360,12 @@ public class BigWarp< T >
 	public static String maxFaceDatasetName = "/heightmaps/max";
 	public static String nailDatasetName = "/nails";
     private String flattenDataset;
+	private String sectionName;
+	private boolean patchMode = false;
+	private FinalInterval patchInterval;
+	private boolean runOnCluster = false;
 
-    public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
+	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
 		this( data, windowTitle, BigWarpViewerOptions.options( ( detectNumDims( data.sources ) == 2 ) ), progressWriter );
 	}
@@ -1221,6 +1225,10 @@ public class BigWarp< T >
 		landmarkMenuBar.add( landmarkMenu );
 		landmarkFrame.setJMenuBar( landmarkMenuBar );
 		//	exportMovingImage( file, state, progressWriter );
+
+		final JMenuItem finishPatchMode = new JMenuItem( actionMap.get( BigWarpActions.FINISH_PATCH_MODE ) );
+		finishPatchMode.setText( "Finish patch mode" );
+		landmarkMenu.add( finishPatchMode );
 
 		final JMenuItem saveExport = new JMenuItem( actionMap.get( BigWarpActions.SAVE_WARPED ) );
 		saveExport.setText( "Save warped image" );
@@ -2268,7 +2276,100 @@ public class BigWarp< T >
 	    this.flattenDataset = flattenDataset;
     }
 
-    public enum WarpVisType
+	public void setSectionName(String sectionName) {
+		this.sectionName = sectionName;
+	}
+
+	public void startPatchMode() {
+		this.patchMode = true;
+	}
+
+	public void finishPatchMode() throws InterruptedException {
+		if( !patchMode ) {
+			System.out.println("Not currently in patch mode");
+		} else {
+
+			List<Double[]> nails = landmarkModel.getPoints(false);
+			double[] minCoord = new double[]{Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE};
+			double[] maxCoord = new double[]{Double.MIN_VALUE, Double.MIN_VALUE, Double.MIN_VALUE};
+			for( Double[] nail : nails ) {
+				for( int d = 0; d < minCoord.length; d++ ) {
+					if( nail[d] < minCoord[d] )
+						minCoord[d] = nail[d];
+					if( nail[d] > maxCoord[d] )
+						maxCoord[d] = nail[d];
+				}
+			}
+
+			long startZ = (long) Math.floor(minCoord[2]);
+			long stopZ = (long) Math.ceil(maxCoord[2]);
+			String costDir = "/nrs/flyem/alignment/costs/full/" + sectionName;
+			String imageDir = "/nrs/flyem/alignment/Z1217-19m/VNC/" + sectionName + "/zcorr";
+			String resampleDir = "/nrs/flyem/alignment/costs/downsampled/" + sectionName;
+			if( !( new File(costDir) ).exists() ) {
+				new File(costDir).mkdir();
+			}
+			if( !( new File(resampleDir) ).exists() ) {
+				new File(resampleDir).mkdir();
+			}
+
+			String bsubCmd = "ssh login2 \"bsub -g \\\"/flyem\\\" -We 10 -n 1 -o /dev/null -P flyem -J Nail_flatten_sample[" + startZ + "-" + stopZ + "] singularity exec -B /groups/flyem,/nrs/flyem /groups/flyem/data/alignment/python_opencv.img /usr/bin/python3 /groups/flyem/data/alignment/fibsem-flatten/hxports/resinClassifyTwoSidedBatchwise.py --image_dir=" + imageDir + " --cost_dir=" + costDir + " --start_image=\\$\\{LSB_JOBINDEX\\} --stop_image=\\$\\{LSB_JOBINDEX\\} --step=1 --resample --resample_dir=" + resampleDir + " --rx=100 --ry=50\"";
+			System.out.println("bsub command: " + bsubCmd);
+
+			if( runOnCluster ) {
+				try {
+					Process process = Runtime.getRuntime().exec(bsubCmd);
+					StreamGobbler streamGobbler = new StreamGobbler(process.getInputStream(), System.out::println);
+					Executors.newSingleThreadExecutor().submit(streamGobbler);
+					int exitCode = process.waitFor();
+					assert exitCode == 0;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+
+			this.patchInterval = Intervals.createMinMax(0, 0, startZ, fullSizeInterval.dimension(0), fullSizeInterval.dimension(1), stopZ);
+
+			// Now wait until cost is computed
+			Set<String> expectedFiles = new HashSet<>();
+			for( long z = startZ; z < stopZ; z++ ) {
+				expectedFiles.add("zcorr." + String.format("%05d", z) + "-resinCost.tif");
+			}
+
+			System.out.println("Waiting for cost function calculation");
+			File costDirFile = new File(costDir);
+			while( expectedFiles.size() > 0 ) {
+				String[] listing = costDirFile.list();
+				for( String el : listing ) {
+					if( expectedFiles.contains(el) )
+						expectedFiles.remove(el);
+				}
+				Thread.sleep(1000);
+			}
+
+			landmarkModel.clear();
+
+			patchMode = false;
+		}
+	}
+
+	private static class StreamGobbler implements Runnable {
+		private InputStream inputStream;
+		private Consumer<String> consumer;
+
+		public StreamGobbler(InputStream inputStream, Consumer<String> consumer) {
+			this.inputStream = inputStream;
+			this.consumer = consumer;
+		}
+
+		@Override
+		public void run() {
+			new BufferedReader(new InputStreamReader(inputStream)).lines()
+			  .forEach(consumer);
+		}
+	}
+
+	public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
 	};
@@ -2877,7 +2978,7 @@ public class BigWarp< T >
 			if( BigWarp.this.currentTransform == null )
 				BigWarp.this.restimateTransformation();
 
-			System.out.println("Add fixed point in moving " + isMovingImage + " transform enabled " + viewerP.getTransformEnabled() );
+			//System.out.println("Add fixed point in moving " + isMovingImage + " transform enabled " + viewerP.getTransformEnabled() );
 
 			// FIXME This method has been overridden NOTE getTransformEnabled does not behave as expected this clause seems to be useless
 			if ( isMovingImage && viewerP.getTransformEnabled() )
@@ -2914,7 +3015,7 @@ public class BigWarp< T >
 			}
 
 
-			if ( updateWarpOnPtChange )
+			if ( updateWarpOnPtChange && !patchMode )
 				BigWarp.this.restimateTransformation();
 
 //			if ( isMovingImage && viewerP.getTransformEnabled() )
@@ -3332,43 +3433,58 @@ public class BigWarp< T >
 						//InvertibleRealTransform invXfm = bw.getTransformation( index );
 						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
 
-						RandomAccessibleInterval<DoubleType> costImg = bw.sourceCostImg;// Consider copying/cloning the sourceCostImg, its a cachedcellimg so factory isnt implemented
+						if( !bw.patchMode ) {
 
-                        List<Double[]> nails = bw.landmarkModel.getPoints(false);
-						N5FSWriter n5 = new N5FSWriter(bw.n5Path);
-						ArrayImg<DoubleType, DoubleArray> nailImg = ArrayImgs.doubles(nails.size(), 3);
-						ArrayRandomAccess<DoubleType> nira = nailImg.randomAccess();
-                        //for( Double[] nail : nails ) {
-						long[] pos = new long[3];
-						for( int k = 0; k < nails.size(); k++ ) {
-							Double[] nail = nails.get(k);
-                            BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
-                            pos[0] = k;
-                            for( int d = 0; d < 3; d++ ) {
-								pos[1] = d;
-								nira.setPosition(pos);
-								nira.get().set(nail[d]);
+							// bw.patchInterval; // this is the interval derived from nails
+							RandomAccessibleInterval<DoubleType> costImg = bw.loadCostPatch();
+							// TODO CONTINUE HERE
+
+							// TODO if the cost Img doesn't exist, then load region?
+							// First create the appropriate interval, use padding?
+							// Next, place nails around the periphery placed at the current heightmap
+							// Then place
+
+							//costImg
+
+							//RandomAccessibleInterval<DoubleType> costImg = bw.sourceCostImg;// Consider copying/cloning the sourceCostImg, its a cachedcellimg so factory isnt implemented
+
+							List<Double[]> nails = bw.landmarkModel.getPoints(false);
+							N5FSWriter n5 = new N5FSWriter(bw.n5Path);
+							ArrayImg<DoubleType, DoubleArray> nailImg = ArrayImgs.doubles(nails.size(), 3);
+							ArrayRandomAccess<DoubleType> nira = nailImg.randomAccess();
+							//for( Double[] nail : nails ) {
+							long[] pos = new long[3];
+							for (int k = 0; k < nails.size(); k++) {
+								Double[] nail = nails.get(k);
+								BigWarp.applyNail(costImg, nail, bw.fullSizeInterval);// FIXME check if this interval is appropriate or bw.patchInterval should be used
+								pos[0] = k;
+								for (int d = 0; d < 3; d++) {
+									pos[1] = d;
+									nira.setPosition(pos);
+									nira.get().set(nail[d]);
+								}
 							}
-                        }
-//						if( nails.size() > 0)
-//							N5Utils.save(nailImg, n5, bw.flattenDataset + nailDatasetName, new int[]{nails.size(), 3}, new GzipCompression());
-//
-						//final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(costImg, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+							//						if( nails.size() > 0)
+							//							N5Utils.save(nailImg, n5, bw.flattenDataset + nailDatasetName, new int[]{nails.size(), 3}, new GzipCompression());
+							//
+							//final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(costImg, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 
-						//IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
+							//IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
 
-						long[] dimensions = new long[3];
-						bw.fullSizeInterval.dimensions(dimensions);
+							long[] dimensions = new long[3];
+							bw.fullSizeInterval.dimensions(dimensions);
 
-                        RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costImg, bw.imagej.op()), 0, dimensions[0], dimensions[2], bw.imagej.op());
-						bw.minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+							RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costImg, bw.imagej.op()), 0, dimensions[0], dimensions[2], bw.imagej.op());
+							bw.minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+
+							RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costImg, bw.imagej.op()), bw.cost.dimension(2) / 2, dimensions[0], dimensions[2], bw.imagej.op());
+							bw.maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+
+						}
 						DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
-
-						RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costImg, bw.imagej.op()), bw.cost.dimension(2) / 2, dimensions[0], dimensions[2], bw.imagej.op());
-						bw.maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 						DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
 
-                        System.out.println("minY is " +  minMean.get() + " and maxY is " + maxMean.get());
+						System.out.println("minY is " + minMean.get() + " and maxY is " + maxMean.get());
 
 						final FlattenTransform ft = new FlattenTransform(
 								RealViews.affine(
@@ -3471,6 +3587,40 @@ public class BigWarp< T >
 			}
 		}
 		
+	}
+
+	private RandomAccessibleInterval<DoubleType> loadCostPatch() {
+		// Fetch the patch region, and cache it
+
+		String costDir = "/nrs/flyem/alignment/costs/full/" + sectionName;
+
+		RandomAccessibleInterval<DoubleType> costPatch = imagej.op().create().img(patchInterval);
+		RandomAccess<DoubleType> costPatchAccess = costPatch.randomAccess();
+
+		for( long z = patchInterval.min(2) ; z < patchInterval.max(2) ; z++ ) {
+
+			// load cost slices
+			ImagePlus costImp = IJ.openImage(costDir + "zcorr." + String.format("%05d", z) + "-resinCost.tif");
+			Img<FloatType> costSlice = ImageJFunctions.wrapFloat(costImp);
+			RandomAccessibleInterval<DoubleType> costSliceDouble = Converters.convert((RandomAccessibleInterval<FloatType>)costSlice, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+
+			RandomAccess<DoubleType> costSliceAccess = costSliceDouble.randomAccess();
+			long[] pos = new long[]{0, 0, z};
+			long[] slicePos = new long[]{0, 0, 0};
+			for( pos[0] = patchInterval.min(0); pos[0] < patchInterval.max(0); pos[0]++ ) {
+				for( pos[1] = patchInterval.min(1); pos[1] < patchInterval.max(1); pos[1]++ ) {
+					slicePos[0] = pos[0];
+					slicePos[1] = pos[1];
+					costPatchAccess.setPosition(pos);
+					costSliceAccess.setPosition(slicePos);
+
+					costPatchAccess.get().set(costSliceAccess.get());
+				}
+			}
+
+		}
+
+		return costPatch;
 	}
 
 	public static Source<?>[] makeFlatAndOriginalSource(RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps,

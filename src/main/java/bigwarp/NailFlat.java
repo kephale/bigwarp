@@ -96,7 +96,9 @@ public class NailFlat implements Callable<Void> {
 
 	FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", 1, 1, 1);
 
-	public static final void main(final String... args) throws IOException, InterruptedException, ExecutionException, SpimDataException {
+	public static final void main(String... args) throws IOException, InterruptedException, ExecutionException, SpimDataException {
+		args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "Sec24"};
+
 		CommandLine.call(new NailFlat(), args);
 		//new NailFlat().call();
 	}
@@ -248,6 +250,9 @@ public class NailFlat implements Callable<Void> {
 		bw.setUseVolatile(useVolatile);
 		bw.setN5Path(n5Path);
 		bw.setFlattenSubContainer(flattenDataset);
+		bw.setSectionName(sectionName);
+
+		bw.startPatchMode();
 
 		//System.out.println(bw.getTransformation());
 		//bw.loadNails(n5Path, flattenDataset + nailDataset);// FIXME
