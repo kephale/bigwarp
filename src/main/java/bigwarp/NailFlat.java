@@ -79,20 +79,23 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"-d", "--dataset"}, required = true, description = "Input dataset -d '/slab-26'")
 	private String inputDataset = "/volumes/input";
 
-//	@Option(names = {"-t", "--cost"}, required = false, description = "Cost dataset -t '/slab-26-cost'")
-//	private String costDataset = "/volumes/cost";
-
 	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/slab-26-flatten'")
 	private String flattenDataset = "/flatten";
+
+	@Option(names = {"-u", "--resume"}, required = false, description = "Resume a flattening session by loading min/max from the flatten dataset -u true")
+	private boolean resume = false;
+
+	@Option(names = {"--min"}, required = false, description = "Dataset for the min heightmap -f '/slab-26-flatten/min' or full path to HDF5")
+	private String minDataset = null;
+
+	@Option(names = {"--max"}, required = false, description = "Dataset for the max heightmap -f '/slab-26-flatten/max' or full path to HDF5")
+	private String maxDataset = null;
 
 	@Option(names = {"-s", "--sectionName"}, required = true, description = "Section name, must correspond to /nrs/flyem/alignment/Z1217-19m/VNC/<SectionName> -s 'Sec24'")
 	private String sectionName = "Sec24";
 
-	private double transformScaleX = 1;
-	private double transformScaleY = 1;
-
 	private boolean useVolatile = true;
-	private long padding = 20;
+	private long padding = 2000;
 
 	FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", 1, 1, 1);
 
@@ -117,76 +120,50 @@ public class NailFlat implements Callable<Void> {
 		final int numScales = n5.list(inputDataset).length;
 		final long[] dimensions = n5.getDatasetAttributes(inputDataset + "/s0").getDimensions();
 
-//		// Load cost
-//        RandomAccessibleInterval<UnsignedByteType> cost = null;
-//        final RandomAccessibleInterval<DoubleType> costDouble = null;
-//        if( n5.exists(costDataset) ) {
-//            if( n5.exists(costDataset + "/s0") )
-//			    cost = N5Utils.open(n5, costDataset + "/s0");
-//            else
-//                cost = N5Utils.open(n5, costDataset);
-//		} else {
-//        	System.out.println("Missing cost dataset in n5.");
-//			//throw new IOException("Missing cost dataset");
-//		}
-
-//		FinalInterval ivl = Intervals.createMinMax(0, 0, 0, cost.dimension(0), cost.dimension(1), cost.dimension(2));
-//		Img<DoubleType> costDouble = imagej.op().create().img(ivl, new DoubleType());
-//        copyRealInto(cost, costDouble);
-        //final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-        //ImageJFunctions.wrap(costDouble, "CostDouble").show();
-
-        // Load/compute min heightmap and compute average value
 		RandomAccessibleInterval<DoubleType> min = null;
-		// Load from N5 if possible, if not, look for an HDF5
-		if( n5.exists(flattenDataset + BigWarp.minFaceDatasetName) ) {
-			System.out.println("Loading min face");
+		RandomAccessibleInterval<DoubleType> max = null;
+
+		if( resume ) {
+			minDataset = flattenDataset + BigWarp.minFaceDatasetName;
+			maxDataset = flattenDataset + BigWarp.maxFaceDatasetName;
+			// TODO add support for loading nails
+		}
+
+		// Min heightmap: Load from N5 if possible
+		if( minDataset != null && n5.exists(minDataset) ) {
+			System.out.println("Loading min face from N5");
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
-		} else if( new File(sectionDirectory(sectionName) + "/" + sectionName + "-bottom.h5").exists() ) {
-			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(sectionDirectory(sectionName) + "/" + sectionName + "-bottom.h5");
+		} else if( minDataset != null && new File(minDataset).exists() ) {
+			// If there is no minDataset, then assume this is an HDF5
+			System.out.println("Loading min face from N5");
+			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(minDataset);
 			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[]{128, 128, 128});
 			final RandomAccessibleInterval<FloatType> floats = N5Utils.openVolatile(hdf5, "/volume");
 			RandomAccessibleInterval<DoubleType> minConv = Converters.convert(floats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+
+			// Using an HDF5 RAI can be slow when computing transforms, write to N5 and use that
 			N5FSWriter n5w = new N5FSWriter(n5Path);
 			N5Utils.save(minConv, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{512, 512}, new GzipCompression());
-
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
 		}
-//		} else if( cost != null ) {
-//			// This code is for using a precomputed cost function
-//			System.out.println("Computing min face");
-//			RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costDouble, imagej.op()), 0, dimensions[0], dimensions[2], imagej.op());
-//			min = Converters.convert(intMin, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-//		} else {
-//			throw new IOException("Missing min face and cost");
-//		}
-		//ImageJFunctions.wrap(min, "Min").show();
-		//DoubleType minMean = SemaUtils.getAvgValue(min);
 
-		// Load/compute max heightmap and compute average value
-		RandomAccessibleInterval<DoubleType> max = null;
-		if( n5.exists(flattenDataset + BigWarp.maxFaceDatasetName) ) {
-			System.out.println("Loading max face");
+		// Min heightmap: Load from N5 if possible
+		if( maxDataset != null && n5.exists(maxDataset) ) {
+			System.out.println("Loading max face from N5");
 			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
-		} else if( new File(sectionDirectory(sectionName) + "/" + sectionName + "-top.h5").exists() ) {
-			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(sectionDirectory(sectionName) + "/" + sectionName + "-top.h5");
+		} else if(  maxDataset != null && new File(maxDataset).exists() ) {
+			// If there is no maxDataset, then assume this is an HDF5
+			System.out.println("Loading max face from HDF5");
+			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(maxDataset);
 			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[]{128, 128, 128});
 			final RandomAccessibleInterval<FloatType> floats = N5Utils.openVolatile(hdf5, "/volume");
 			RandomAccessibleInterval<DoubleType> maxConv = Converters.convert(floats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+
+			// Using an HDF5 RAI can be slow when computing transforms, write to N5 and use that
 			N5FSWriter n5w = new N5FSWriter(n5Path);
 			N5Utils.save(maxConv, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{512, 512}, new GzipCompression());
-
 			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
 		}
-//		} else if( cost != null ) {
-//			System.out.println("Computing max face");
-//			RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costDouble, imagej.op()), cost.dimension(2) / 2, dimensions[0], dimensions[2], imagej.op());
-//			max = Converters.convert(intMax, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-//		} else {
-//			throw new IOException("Missing max face and cost");
-//		}
-		//ImageJFunctions.wrap(max, "Max").show();
-		//DoubleType maxMean = SemaUtils.getAvgValue(max);
 
 		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
@@ -236,9 +213,8 @@ public class NailFlat implements Callable<Void> {
 		}
 
 
+		// Make the Sources that we will use in BigWarp
 		final Source<?>[] fAndO = makeFlatAndOriginalSource(rawMipmaps, scales, voxelDimensions, inputDataset, sourceInterval, useVolatile, null, queue);
-
-
 		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
                                                                    new Source[]{fAndO[1]},
                                                                    new String[]{"Flat", "Original"});
@@ -248,13 +224,11 @@ public class NailFlat implements Callable<Void> {
 		@SuppressWarnings( "unchecked" )
 		BigWarp bw = new BigWarp( bwData, n5.getBasePath(), progress );
 
+		// Load in a bunch of global-ish variables to BigWarp
 		bw.setImagej(imagej);
 		bw.setIsMovingDisplayTransformed(true);
 		bw.setFullSizeInterval(Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]));
-		//bw.setSourceCostImg(costDouble);
-		bw.restimateTransformation();
 		bw.setRawMipmaps(rawMipmaps);
-		bw.setUseVolatile(useVolatile);
 		bw.setQueue(queue);
 		bw.setMinHeightmap(min);
 		bw.setMaxHeightmap(max);
@@ -266,8 +240,12 @@ public class NailFlat implements Callable<Void> {
 		bw.setN5Path(n5Path);
 		bw.setFlattenSubContainer(flattenDataset);
 
+		// Load nails from N5
 		//System.out.println(bw.getTransformation());
-		//bw.loadNails(n5Path, flattenDataset + nailDataset);// FIXME
+		//bw.loadNails(n5Path, flattenDataset + nailDataset);// FIXME and see the --resume argument
+
+		// Trigger the first computation of the flatten transform
+		bw.restimateTransformation();
 
 		return null;
 	}

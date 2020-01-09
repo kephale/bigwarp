@@ -3397,6 +3397,7 @@ public class BigWarp< T >
 									bw.fullSizeInterval.dimension(2) - 1,
 									Math.round(maxMean.get()) + bw.padding});
 
+						// Now regenerate the Source with the new transform and crop interval
 						final Source<?>[] fAndO = makeFlatAndOriginalSource(bw.rawMipmaps, bw.scales, bw.voxelDimensions, bw.name, cropInterval, bw.useVolatile, ft, bw.queue);
 
 						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
