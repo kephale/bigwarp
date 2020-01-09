@@ -3332,7 +3332,11 @@ public class BigWarp< T >
 						//InvertibleRealTransform invXfm = bw.getTransformation( index );
 						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
 
-						RandomAccessibleInterval<DoubleType> costImg = bw.sourceCostImg;// Consider copying/cloning the sourceCostImg, its a cachedcellimg so factory isnt implemented
+						//RandomAccessibleInterval<DoubleType> costImg = bw.sourceCostImg;// Consider copying/cloning the sourceCostImg, its a cachedcellimg so factory isnt implemented
+						RandomAccessibleInterval<DoubleType> costImg = bw.getCostImg();
+
+						// TODO continue here. this code should probably not assume that the source costImg can be directly changed
+						// duplicate the data, place nails, update the heightmaps, save nails, then discard
 
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
 						N5FSWriter n5 = new N5FSWriter(bw.n5Path);
@@ -3342,7 +3346,7 @@ public class BigWarp< T >
 						long[] pos = new long[3];
 						for( int k = 0; k < nails.size(); k++ ) {
 							Double[] nail = nails.get(k);
-                            BigWarp.applyNail( costImg, nail, bw.fullSizeInterval);
+                            BigWarp.applyNail( costImg, nail );
                             pos[0] = k;
                             for( int d = 0; d < 3; d++ ) {
 								pos[1] = d;
@@ -3473,6 +3477,12 @@ public class BigWarp< T >
 		
 	}
 
+	// Dummy cost img function for testing
+	private RandomAccessibleInterval<DoubleType> getCostImg() {
+		RandomAccessibleInterval<DoubleType> rai = Converters.convert(rawMipmaps[0], (a, b) -> b.setReal(a.getRealDouble() > 50 ? a.getRealDouble() : 0), new DoubleType());
+		return rai;
+	}
+
 	public static Source<?>[] makeFlatAndOriginalSource(RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps,
 												  double[][] scales,
 												  FinalVoxelDimensions voxelDimensions,
@@ -3561,20 +3571,18 @@ public class BigWarp< T >
 		return new Source<?>[]{volatileMipmapSourceFlat, volatileMipmapSourceOriginal};
 	}
 
-	// Add a nail to the costImg, costImg is at full scale and nail is in full scale coords
-    private static void applyNail(RandomAccessibleInterval<DoubleType> costImg, Double[] nail, FinalInterval fullSizeInterval) {
+    private static void applyNail(RandomAccessibleInterval<DoubleType> costImg, Double[] nail) {
         RandomAccess<DoubleType> ra = costImg.randomAccess();
 
-        long[] scaledNail = new long[3];// in costImg dimensions
-        for( int d = 0; d < scaledNail.length; d++ ) {
-        	scaledNail[d] = Math.round(costImg.dimension(d) * nail[d] / fullSizeInterval.dimension(d));
-        }
+        // FIXME: this is where nails should snap to the cost-function gridding
+		long nailX = Math.round(nail[0]);
+		long nailY = Math.round(nail[0]);
+		long nailZ = Math.round(nail[2]);
 
-        // Everything beyond here is in costImg dimensions
-        long[] pos = new long[]{scaledNail[0], 0, scaledNail[2]};
+        long[] pos = new long[]{nailX, 0, nailZ};
 
         long yStart, yStop;
-        if( scaledNail[1] < costImg.dimension(1) / 2 ) {
+        if( nailY < costImg.dimension(1) / 2 ) {
         	yStart = 0;
         	yStop = costImg.dimension(1) / 2;
 		} else {
@@ -3582,13 +3590,12 @@ public class BigWarp< T >
         	yStop = costImg.dimension(1);
 		}
 
-        //System.out.println("ScaledNail = " + scaledNail[0] + " " + scaledNail[1] + " " + scaledNail[2] );
-
+        // Loop over Y-coordinates and place nail + nail penalties
         for( long y = yStart; y < yStop; y++ ) {
             pos[1] = y;
             ra.setPosition(pos);
 			double pre = ra.get().getRealDouble();
-            if( y == scaledNail[1] ) {
+            if( y == nailY ) {
 //            	System.out.println("Placing nail at " + y + " was " + ra.get().getRealDouble() + " now 0");
             	ra.get().setReal(0);
             } else {

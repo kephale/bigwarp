@@ -96,7 +96,10 @@ public class NailFlat implements Callable<Void> {
 
 	FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", 1, 1, 1);
 
-	public static final void main(final String... args) throws IOException, InterruptedException, ExecutionException, SpimDataException {
+	public static final void main(String... args) throws IOException, InterruptedException, ExecutionException, SpimDataException {
+		if( args.length == 0 )
+			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "Sec24"};
+
 		CommandLine.call(new NailFlat(), args);
 		//new NailFlat().call();
 	}
@@ -115,8 +118,8 @@ public class NailFlat implements Callable<Void> {
 		final long[] dimensions = n5.getDatasetAttributes(inputDataset + "/s0").getDimensions();
 
 //		// Load cost
-        RandomAccessibleInterval<UnsignedByteType> cost = null;
-        final RandomAccessibleInterval<DoubleType> costDouble = null;
+//        RandomAccessibleInterval<UnsignedByteType> cost = null;
+//        final RandomAccessibleInterval<DoubleType> costDouble = null;
 //        if( n5.exists(costDataset) ) {
 //            if( n5.exists(costDataset + "/s0") )
 //			    cost = N5Utils.open(n5, costDataset + "/s0");
@@ -134,59 +137,56 @@ public class NailFlat implements Callable<Void> {
         //ImageJFunctions.wrap(costDouble, "CostDouble").show();
 
         // Load/compute min heightmap and compute average value
-		final RandomAccessibleInterval<DoubleType> min;
+		RandomAccessibleInterval<DoubleType> min = null;
+		// Load from N5 if possible, if not, look for an HDF5
 		if( n5.exists(flattenDataset + BigWarp.minFaceDatasetName) ) {
 			System.out.println("Loading min face");
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
 		} else if( new File(sectionDirectory(sectionName) + "/" + sectionName + "-bottom.h5").exists() ) {
 			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(sectionDirectory(sectionName) + "/" + sectionName + "-bottom.h5");
-			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[] {128, 128, 128});
+			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[]{128, 128, 128});
 			final RandomAccessibleInterval<FloatType> floats = N5Utils.openVolatile(hdf5, "/volume");
 			RandomAccessibleInterval<DoubleType> minConv = Converters.convert(floats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
 			N5FSWriter n5w = new N5FSWriter(n5Path);
 			N5Utils.save(minConv, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{512, 512}, new GzipCompression());
 
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
-		} else if( cost != null ) {
-			System.out.println("Computing min face");
-			RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costDouble, imagej.op()), 0, dimensions[0], dimensions[2], imagej.op());
-			min = Converters.convert(intMin, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-		} else {
-			throw new IOException("Missing min face and cost");
 		}
+//		} else if( cost != null ) {
+//			// This code is for using a precomputed cost function
+//			System.out.println("Computing min face");
+//			RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costDouble, imagej.op()), 0, dimensions[0], dimensions[2], imagej.op());
+//			min = Converters.convert(intMin, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+//		} else {
+//			throw new IOException("Missing min face and cost");
+//		}
 		//ImageJFunctions.wrap(min, "Min").show();
-		DoubleType minMean = SemaUtils.getAvgValue(min);
+		//DoubleType minMean = SemaUtils.getAvgValue(min);
 
 		// Load/compute max heightmap and compute average value
-		final RandomAccessibleInterval<DoubleType> max;
+		RandomAccessibleInterval<DoubleType> max = null;
 		if( n5.exists(flattenDataset + BigWarp.maxFaceDatasetName) ) {
 			System.out.println("Loading max face");
 			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
 		} else if( new File(sectionDirectory(sectionName) + "/" + sectionName + "-top.h5").exists() ) {
 			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(sectionDirectory(sectionName) + "/" + sectionName + "-top.h5");
-			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[] {128, 128, 128});
+			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[]{128, 128, 128});
 			final RandomAccessibleInterval<FloatType> floats = N5Utils.openVolatile(hdf5, "/volume");
 			RandomAccessibleInterval<DoubleType> maxConv = Converters.convert(floats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
 			N5FSWriter n5w = new N5FSWriter(n5Path);
 			N5Utils.save(maxConv, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{512, 512}, new GzipCompression());
 
 			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
-		} else if( cost != null ) {
-			System.out.println("Computing max face");
-			RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costDouble, imagej.op()), cost.dimension(2) / 2, dimensions[0], dimensions[2], imagej.op());
-			max = Converters.convert(intMax, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-		} else {
-			throw new IOException("Missing max face and cost");
 		}
+//		} else if( cost != null ) {
+//			System.out.println("Computing max face");
+//			RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costDouble, imagej.op()), cost.dimension(2) / 2, dimensions[0], dimensions[2], imagej.op());
+//			max = Converters.convert(intMax, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+//		} else {
+//			throw new IOException("Missing max face and cost");
+//		}
 		//ImageJFunctions.wrap(max, "Max").show();
-		DoubleType maxMean = SemaUtils.getAvgValue(max);
-
-		System.out.println("Mean min heightmap: " + minMean.get());
-		System.out.println("Mean max heightmap: " + maxMean.get());
-
-		final FinalInterval cropInterval = new FinalInterval(
-				new long[] {0, 0, Math.round(minMean.get()) - padding},
-				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxMean.get()) + padding});
+		//DoubleType maxMean = SemaUtils.getAvgValue(max);
 
 		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
@@ -219,7 +219,24 @@ public class NailFlat implements Callable<Void> {
 
 		final int numProc = Runtime.getRuntime().availableProcessors();
 		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
-		final Source<?>[] fAndO = makeFlatAndOriginalSource(rawMipmaps, scales, voxelDimensions, inputDataset, cropInterval, useVolatile, null, queue);
+
+		FinalInterval sourceInterval = null;
+		if( max != null && min != null ) {
+			// If we have heightmaps, then we can define a crop interval for source rendering
+			DoubleType maxMean = SemaUtils.getAvgValue(max);
+			DoubleType minMean = SemaUtils.getAvgValue(min);
+
+			sourceInterval = new FinalInterval(
+				new long[] {0, 0, Math.round(minMean.get()) - padding},
+				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxMean.get()) + padding});
+		} else {
+			sourceInterval = new FinalInterval(
+				new long[] {0, 0, 0},
+				new long[] {dimensions[0] - 1, dimensions[2] - 1, dimensions[1] -1});// FIXME double check this dimension swap, it came from saalfeld's hot-knife ViewFlattened
+		}
+
+
+		final Source<?>[] fAndO = makeFlatAndOriginalSource(rawMipmaps, scales, voxelDimensions, inputDataset, sourceInterval, useVolatile, null, queue);
 
 
 		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
@@ -234,14 +251,14 @@ public class NailFlat implements Callable<Void> {
 		bw.setImagej(imagej);
 		bw.setIsMovingDisplayTransformed(true);
 		bw.setFullSizeInterval(Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]));
-		bw.setSourceCostImg(costDouble);
+		//bw.setSourceCostImg(costDouble);
 		bw.restimateTransformation();
 		bw.setRawMipmaps(rawMipmaps);
 		bw.setUseVolatile(useVolatile);
 		bw.setQueue(queue);
 		bw.setMinHeightmap(min);
 		bw.setMaxHeightmap(max);
-		bw.setCost(cost);
+		//bw.setCost(cost);
 		bw.setVoxelDimensions(voxelDimensions);
 		bw.setScales(scales);
 		bw.setName(inputDataset);
