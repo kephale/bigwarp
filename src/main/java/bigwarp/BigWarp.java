@@ -37,14 +37,10 @@ import javax.swing.table.TableCellEditor;
 import bdv.util.BdvStackSource;
 import bdv.util.RandomAccessibleIntervalMipmapSource;
 import bdv.util.volatiles.SharedQueue;
-import ch.systemsx.cisd.hdf5.HDF5Factory;
-import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import mpicbg.spim.data.SpimData;
 import mpicbg.spim.data.XmlIoSpimData;
 import mpicbg.spim.data.registration.ViewTransformAffine;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
-import net.imagej.DefaultDataset;
-import net.imagej.ImgPlus;
 import net.imagej.ops.OpService;
 import net.imglib2.*;
 import net.imglib2.RandomAccess;
@@ -57,7 +53,6 @@ import net.imglib2.img.array.ArrayRandomAccess;
 import net.imglib2.img.basictypeaccess.array.DoubleArray;
 import net.imglib2.img.cell.Cell;
 import net.imglib2.img.cell.CellRandomAccess;
-import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.realtransform.*;
 import net.imglib2.type.numeric.RealType;
@@ -68,7 +63,6 @@ import net.imglib2.util.Intervals;
 import net.imglib2.util.Pair;
 import net.imglib2.view.IntervalView;
 import net.imglib2.view.SubsampleIntervalView;
-import net.preibisch.surface.SurfaceFitCommand;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
@@ -77,7 +71,6 @@ import org.janelia.saalfeldlab.hotknife.util.Transform;
 import org.janelia.saalfeldlab.n5.GzipCompression;
 import org.janelia.saalfeldlab.n5.N5FSReader;
 import org.janelia.saalfeldlab.n5.N5FSWriter;
-import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.utility.ui.RepeatingReleasedEventsFixer;
 import org.jdom2.Document;
@@ -330,20 +323,19 @@ public class BigWarp< T >
 	private File movingImageXml;
 
 	// SEMA additions
-//	public RandomAccessibleInterval<DoubleType> max = null;
-//	public RandomAccessibleInterval<DoubleType> min = null;
 	double transformScaleX = 1;
 	double transformScaleY = 1;
 
 	private static double nailPenalty = Double.MAX_VALUE;
     //private static double nailPenalty = 1000;
 
-	long padding = 20;
+	private long flattenPadding = 2000;
+	private long nailPadding = 200;
 	private net.imagej.ImageJ imagej;
-    //private Img<RealType> sourceCostImg;
+    
     private RandomAccessibleInterval<DoubleType> sourceCostImg;
 	private FinalInterval fullSizeInterval;
-	private int numScales;
+	
 	private RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps;
 	private boolean useVolatile;
 	private SharedQueue queue;
@@ -353,13 +345,15 @@ public class BigWarp< T >
 	private FinalVoxelDimensions voxelDimensions;
 	private double[][] scales;
 	private String name;
+	
 	private String n5Path;
+	private String flattenDataset;
 
     // These are subdatasets of flatten, such that multiple flattening attempts can be supported
     public static String minFaceDatasetName = "/heightmaps/min";
 	public static String maxFaceDatasetName = "/heightmaps/max";
 	public static String nailDatasetName = "/nails";
-    private String flattenDataset;
+	// end SEMA additions
 
     public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2227,6 +2221,7 @@ public class BigWarp< T >
 
 	public void loadNails(String n5Path, String nailDataset) throws IOException, InterruptedException {
 
+		// FIXME this is probably necessary
 		while( currentTransform == null ) {
 			Thread.sleep(20);
 		}
@@ -2258,10 +2253,26 @@ public class BigWarp< T >
 	}
 
     public void saveFlatten() throws IOException {
-	    // TODO save flattening state
         N5FSWriter n5 = new N5FSWriter(n5Path);
         N5Utils.save( minHeightmap, n5, flattenDataset + minFaceDatasetName, new int[]{512, 512}, new GzipCompression() );
         N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{512, 512}, new GzipCompression() );
+
+        // Now save nails
+        List<Double[]> nails = landmarkModel.getPoints(false);
+		ArrayImg<DoubleType, DoubleArray> nailImg = ArrayImgs.doubles(nails.size(), 3);
+		ArrayRandomAccess<DoubleType> nailAccess = nailImg.randomAccess();
+
+		long[] pos = new long[3];
+		for( int k = 0; k < nails.size(); k++ ) {
+			Double[] nail = nails.get(k);
+
+			pos[0] = k;
+			for( int d = 0; d < 3; d++ ) {
+				pos[1] = d;
+				nailAccess.setPosition(pos);
+				nailAccess.get().set(nail[d]);
+			}
+		}
     }
 
     public void setFlattenSubContainer(String flattenDataset) {
@@ -3331,45 +3342,117 @@ public class BigWarp< T >
 					{
 						//InvertibleRealTransform invXfm = bw.getTransformation( index );
 						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
-
-						//RandomAccessibleInterval<DoubleType> costImg = bw.sourceCostImg;// Consider copying/cloning the sourceCostImg, its a cachedcellimg so factory isnt implemented
+						
+						// The code below is written expecting that costImg is lazy, otherwise it might run out of memory on full scale data
 						RandomAccessibleInterval<DoubleType> costImg = bw.getCostImg();
-
-						// TODO continue here. this code should probably not assume that the source costImg can be directly changed
-						// duplicate the data, place nails, update the heightmaps, save nails, then discard
-
+						
+						long[] dimensions = new long[3];
+						bw.fullSizeInterval.dimensions(dimensions);
+						
+						// First, check if the min/max heightmaps are there, if not then compute them
+						if( bw.minHeightmap == null || bw.maxHeightmap == null ) {
+							// FIXME: this code will try to use the whole cost image, this needs to be chunked and solved with overlapping tiles
+							RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costImg, bw.imagej.op()), 0, dimensions[0], dimensions[2], bw.imagej.op());
+							bw.minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+	
+							RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costImg, bw.imagej.op()), bw.cost.dimension(2) / 2, dimensions[0], dimensions[2], bw.imagej.op());
+							bw.maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+						}
+						
+						// Now process the nails
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
-						N5FSWriter n5 = new N5FSWriter(bw.n5Path);
-						ArrayImg<DoubleType, DoubleArray> nailImg = ArrayImgs.doubles(nails.size(), 3);
-						ArrayRandomAccess<DoubleType> nira = nailImg.randomAccess();
-                        //for( Double[] nail : nails ) {
 						long[] pos = new long[3];
 						for( int k = 0; k < nails.size(); k++ ) {
 							Double[] nail = nails.get(k);
-                            BigWarp.applyNail( costImg, nail );
-                            pos[0] = k;
-                            for( int d = 0; d < 3; d++ ) {
-								pos[1] = d;
-								nira.setPosition(pos);
-								nira.get().set(nail[d]);
+
+							// FIXME: we might want to snap the nail to a grid at this point
+							// FIXME: we might want to skip nails that have already been applied
+							
+							long[] regionMin = new long[3];
+							long[] regionMax = new long[3];
+							// TODO this should not be uniform for all dimensions
+							for( int d = 0; d < nail.length; d++ ) {
+								regionMin[d] = (long) (nail[d] - bw.nailPadding);
+								regionMax[d] = (long) (nail[d] + bw.nailPadding);
+							}
+							
+							// Fetch the known cost data
+							IntervalView<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
+							
+							// Create a new RAI and copy the cost region
+							Img<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) costRegion);
+							net.imglib2.Cursor<DoubleType> nrCursor = Views.flatIterable(nailRegion).cursor();
+							net.imglib2.Cursor<DoubleType> sourceCursor = Views.flatIterable(costRegion).cursor();
+							while( sourceCursor.hasNext() ) {
+								sourceCursor.fwd();
+								nrCursor.fwd();
+								nrCursor.get().set(sourceCursor.get());
+							}
+
+							// FIXME: this is currently written assuming the minHeightmap is the one getting updated
+							RandomAccessibleInterval<DoubleType> heightmap = bw.minHeightmap;
+							long offset = 0;// this also assume min heightmap FIXME for max
+							
+							// Nail periphery to the heightmap along X
+							long[] pos3 = new long[3];// for costRegion
+							long[] pos2 = new long[3];// for heightmap
+							RandomAccess<DoubleType> crAccess = costRegion.randomAccess();
+							RandomAccess<DoubleType> hmAccess = heightmap.randomAccess();
+							for( long x = costRegion.min(0); x < costRegion.max(0); x++ ) {
+								pos3[0] = x;
+								pos2[0] = x;
+								for( long y = costRegion.min(1); y < costRegion.max(1); y++ ) {
+									pos3[1] = y;
+									
+									// Apply along min Z boundary
+									pos3[2] = costRegion.min(2);
+									pos2[2] = pos3[2];
+									crAccess.setPosition(pos3);
+									hmAccess.setPosition(pos2);
+									double hmVal = hmAccess.get().getRealDouble();
+									if( y == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
+										crAccess.get().set(0);
+									} else {
+										crAccess.get().set(bw.nailPenalty);
+									}
+									
+									// Apply along max Z boundary
+									pos3[2] = costRegion.max(2);
+									pos2[2] = pos3[2];
+									crAccess.setPosition(pos3);
+									hmAccess.setPosition(pos2);
+									hmVal = hmAccess.get().getRealDouble();
+									if( y == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
+										crAccess.get().set(0);
+									} else {
+										crAccess.get().set(bw.nailPenalty);
+									}
+								}
+							}
+							
+							// TODO duplicate the above code for looping over Z
+							
+							// This method changes the contents of costRegion based on the nail. If we want to apply multiple nails in a region, this is the place to do it
+                            BigWarp.applyNail( costRegion, nail );
+
+							// Run the actual graphcut to generate this patch of heightmap
+							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap((Img)costRegion, offset, dimensions[0], dimensions[2], bw.imagej.op());// FIXME fake casting of costRegion
+							RandomAccessibleInterval<DoubleType> heightmapPatch = Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+
+							FinalInterval patchInterval = Intervals.createMinMax(costRegion.min(0), costRegion.min(2), costRegion.max(0), costRegion.max(2));
+
+							// Copy the patch into the heightmap
+							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, patchInterval)).cursor();
+							net.imglib2.Cursor<DoubleType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
+							while( patchCursor.hasNext() ) {
+								patchCursor.fwd();
+								hmCursor.fwd();
+								hmCursor.get().set(patchCursor.get());
 							}
                         }
-//						if( nails.size() > 0)
-//							N5Utils.save(nailImg, n5, bw.flattenDataset + nailDatasetName, new int[]{nails.size(), 3}, new GzipCompression());
-//
-						//final RandomAccessibleInterval<DoubleType> costDouble = Converters.convert(costImg, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 
-						//IJ.saveAsTiff(ImageJFunctions.wrap(costImg,"title"),"/groups/cardona/home/harringtonk/SEMA/testCosts/test_nails" + nails.size() + ".tif");
-
-						long[] dimensions = new long[3];
-						bw.fullSizeInterval.dimensions(dimensions);
-
-                        RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costImg, bw.imagej.op()), 0, dimensions[0], dimensions[2], bw.imagej.op());
-						bw.minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+						// At this point the min and max heightmaps are updated to account for the nails
 						DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
-
-						RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costImg, bw.imagej.op()), bw.cost.dimension(2) / 2, dimensions[0], dimensions[2], bw.imagej.op());
-						bw.maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 						DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
 
                         System.out.println("minY is " +  minMean.get() + " and maxY is " + maxMean.get());
@@ -3389,21 +3472,19 @@ public class BigWarp< T >
 								maxMean.get());
 
                         bw.currentTransform = ft;
-						//bw.currentTransform = ft.inverse();// FIXME debug
+						//bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement
 
 						final FinalInterval cropInterval = new FinalInterval(
-						new long[] {0, 0, Math.round(minMean.get()) - bw.padding},
+						new long[] {0, 0, Math.round(minMean.get()) - bw.flattenPadding},
 						new long[] {bw.fullSizeInterval.dimension(0) - 1,
 									bw.fullSizeInterval.dimension(2) - 1,
-									Math.round(maxMean.get()) + bw.padding});
+									Math.round(maxMean.get()) + bw.flattenPadding});
 
 						// Now regenerate the Source with the new transform and crop interval
 						final Source<?>[] fAndO = makeFlatAndOriginalSource(bw.rawMipmaps, bw.scales, bw.voxelDimensions, bw.name, cropInterval, bw.useVolatile, ft, bw.queue);
-
 						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
 																			  new Source[]{fAndO[1]},
 																			  new String[]{"Flat", "Original"});
-
 						bw.data = bwData;
 
 						if ( ft == null )
@@ -4087,7 +4168,6 @@ public class BigWarp< T >
 
 		bw.sourceCostImg = costRaiDouble;
 		bw.restimateTransformation();
-		bw.numScales = numScales;
 		bw.rawMipmaps = rawMipmaps;
 		bw.useVolatile = useVolatile;
 		bw.queue = queue;

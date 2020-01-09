@@ -232,7 +232,6 @@ public class NailFlat implements Callable<Void> {
 		bw.setQueue(queue);
 		bw.setMinHeightmap(min);
 		bw.setMaxHeightmap(max);
-		//bw.setCost(cost);
 		bw.setVoxelDimensions(voxelDimensions);
 		bw.setScales(scales);
 		bw.setName(inputDataset);
