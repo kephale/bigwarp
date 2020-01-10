@@ -73,22 +73,25 @@ import static net.preibisch.surface.SurfaceFitCommand.*;
  */
 public class NailFlat implements Callable<Void> {
 
-	@Option(names = {"-i", "--container"}, required = true, description = "container path, e.g. -i $HOME/fib19.n5")
+	@Option(names = {"-i", "--container"}, required = true, description = "container path, e.g. -i /nrs/flyem/tmp/VNC.n5")
 	private String n5Path = "/nrs/flyem/alignment/kyle/nail_test.n5";
 
-	@Option(names = {"-d", "--dataset"}, required = true, description = "Input dataset -d '/slab-26'")
+	@Option(names = {"-d", "--dataset"}, required = true, description = "Input dataset -d '/zcorr/Sec22___20200106_083252'")
 	private String inputDataset = "/volumes/input";
 
-	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/slab-26-flatten'")
+	@Option(names = {"-s", "--cost"}, required = true, description = "Cost dataset -d '/cost/Sec22___20200110_133809'")
+	private String costDataset = "/volumes/cost";
+
+	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/flatten/Sec22___20200110_133809'")
 	private String flattenDataset = "/flatten";
 
 	@Option(names = {"-u", "--resume"}, required = false, description = "Resume a flattening session by loading min/max from the flatten dataset")
 	private boolean resume = false;
 
-	@Option(names = {"--min"}, required = false, description = "Dataset for the min heightmap -f '/slab-26-flatten/min' or full path to HDF5")
+	@Option(names = {"--min"}, required = false, description = "Dataset for the min heightmap -f '/flatten/Sec22___20200110_133809/heightmaps/min' or full path to HDF5")
 	private String minDataset = null;
 
-	@Option(names = {"--max"}, required = false, description = "Dataset for the max heightmap -f '/slab-26-flatten/max' or full path to HDF5")
+	@Option(names = {"--max"}, required = false, description = "Dataset for the max heightmap -f '/flatten/Sec22___20200110_133809/heightmaps/max' or full path to HDF5")
 	private String maxDataset = null;
 
 	private boolean useVolatile = true;
@@ -98,7 +101,8 @@ public class NailFlat implements Callable<Void> {
 
 	public static final void main(String... args) {
 		if( args.length == 0 )
-			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-u"};
+			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "/cost/Sec23___20200110_152920"};
+			//args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "/cost/Sec23___20200110_152920", "-u"};
 		// to regenerate heightmap from HDF5 use these args
 		    //args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};
 
@@ -163,6 +167,8 @@ public class NailFlat implements Callable<Void> {
 		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
 		final RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = new RandomAccessibleInterval[numScales];
+
+		RandomAccessibleInterval<UnsignedByteType> cost = N5Utils.openVolatile(n5, costDataset + "/s0");
 
 		final double[][] scales = new double[numScales][];
 
@@ -232,6 +238,7 @@ public class NailFlat implements Callable<Void> {
 		bw.setUseVolatile(useVolatile);
 		bw.setN5Path(n5Path);
 		bw.setFlattenSubContainer(flattenDataset);
+		bw.setCost(cost);
 
 		// Load nails from N5
 		//System.out.println(bw.getTransformation());

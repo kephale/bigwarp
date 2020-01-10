@@ -3355,13 +3355,8 @@ public class BigWarp< T >
 						// First, check if the min/max heightmaps are there, if not then compute them
 						if( bw.minHeightmap == null || bw.maxHeightmap == null ) {
 						    System.out.println("Recomputing heightmaps...");
-							// FIXME: this code will try to use the whole cost image, this needs to be chunked and solved with overlapping tiles
-                            // FIXME: reuse nailRegionBorder
-							RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costImg, bw.imagej.op()), 0, dimensions[0], dimensions[1], bw.imagej.op());
-							bw.minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
-	
-							RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costImg, bw.imagej.op()), bw.cost.dimension(1) / 2, dimensions[0], dimensions[1], bw.imagej.op());
-							bw.maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+
+						    bw.recomputeHeightmaps();
 						}
 						
 						// Now process the nails
@@ -3537,7 +3532,30 @@ public class BigWarp< T >
 		
 	}
 
-    /**
+	private void recomputeHeightmaps() {
+		// FIXME: reuse nailRegionBorder for higher resolution
+		RandomAccessibleInterval<DoubleType> fullCostImg = getCostImg();
+
+		// Prepare for the 200-offset
+		System.out.println("Computing heightmaps with 200 offset");
+		long[] sampleSteps = new long[]{100, 50, 200};
+		FinalInterval interval200 = Intervals.createMinMax(0, 0, 0, (long) Math.floor((float) fullCostImg.dimension(0) / sampleSteps[0]), (long) Math.floor((float)fullCostImg.dimension(1) / sampleSteps[1]), (long) Math.floor((float)fullCostImg.dimension(2) / sampleSteps[2]));
+		IntervalView<DoubleType> offsetCost = Views.translate(fullCostImg, sampleSteps[0] / 2, sampleSteps[1] / 2, 1);
+		RandomAccessible<DoubleType> sampledCost = Views.subsample(offsetCost, sampleSteps[0], sampleSteps[1], sampleSteps[2]);
+		IntervalView<DoubleType> cost200 = Views.interval(sampledCost,interval200);
+
+		// Make sure costs are stored in the right block dimension (e.g. flat)o
+
+		System.out.println("Computing min map");
+		RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(cost200, imagej.op()), 0, fullSizeInterval.dimension(0), fullSizeInterval.dimension(1), imagej.op());
+		minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+
+		System.out.println("Computing max map");
+		RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(cost200, imagej.op()), cost.dimension(1) / 2, fullSizeInterval.dimension(0), fullSizeInterval.dimension(1), imagej.op());
+		maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+	}
+
+	/**
      * This method nails the X/Z border of the costRegion at Y-positions encoded by the heightmap
      * This is a mutable function
      * @param costRegion
@@ -3619,9 +3637,8 @@ public class BigWarp< T >
         return costRegion;
     }
 
-    // Dummy cost img function for testing
 	private RandomAccessibleInterval<DoubleType> getCostImg() {
-		RandomAccessibleInterval<DoubleType> rai = Converters.convert(rawMipmaps[0], (a, b) -> b.setReal(a.getRealDouble() > 50 ? a.getRealDouble() : 0), new DoubleType());
+		RandomAccessibleInterval<DoubleType> rai = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
 		return rai;
 	}
 
