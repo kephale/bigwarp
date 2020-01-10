@@ -82,7 +82,7 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/slab-26-flatten'")
 	private String flattenDataset = "/flatten";
 
-	@Option(names = {"-u", "--resume"}, required = false, description = "Resume a flattening session by loading min/max from the flatten dataset -u true")
+	@Option(names = {"-u", "--resume"}, required = false, description = "Resume a flattening session by loading min/max from the flatten dataset")
 	private boolean resume = false;
 
 	@Option(names = {"--min"}, required = false, description = "Dataset for the min heightmap -f '/slab-26-flatten/min' or full path to HDF5")
@@ -91,28 +91,23 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"--max"}, required = false, description = "Dataset for the max heightmap -f '/slab-26-flatten/max' or full path to HDF5")
 	private String maxDataset = null;
 
-	@Option(names = {"-s", "--sectionName"}, required = true, description = "Section name, must correspond to /nrs/flyem/alignment/Z1217-19m/VNC/<SectionName> -s 'Sec24'")
-	private String sectionName = "Sec24";
-
 	private boolean useVolatile = true;
 	private long padding = 2000;
 
 	FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", 1, 1, 1);
 
-	public static final void main(String... args) throws IOException, InterruptedException, ExecutionException, SpimDataException {
+	public static final void main(String... args) {
 		if( args.length == 0 )
-			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "Sec24"};
+			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-u"};
+		// to regenerate heightmap from HDF5 use these args
+		    //args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};
 
 		CommandLine.call(new NailFlat(), args);
 		//new NailFlat().call();
 	}
 
-	public static String sectionDirectory(String sectionName) {
-		return "/nrs/flyem/alignment/Z1217-19m/VNC/" + sectionName;
-	}
-
 	@Override
-	public final Void call() throws IOException, InterruptedException, ExecutionException, SpimDataException {
+	public final Void call() throws IOException, SpimDataException {
 		net.imagej.ImageJ imagej = new net.imagej.ImageJ();
 		final N5FSReader n5 = new N5FSReader(n5Path);
 
@@ -135,7 +130,7 @@ public class NailFlat implements Callable<Void> {
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
 		} else if( minDataset != null && new File(minDataset).exists() ) {
 			// If there is no minDataset, then assume this is an HDF5
-			System.out.println("Loading min face from N5");
+			System.out.println("Loading min face from HDF5");
 			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(minDataset);
 			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[]{128, 128, 128});
 			final RandomAccessibleInterval<FloatType> floats = N5Utils.openVolatile(hdf5, "/volume");
@@ -143,7 +138,7 @@ public class NailFlat implements Callable<Void> {
 
 			// Using an HDF5 RAI can be slow when computing transforms, write to N5 and use that
 			N5FSWriter n5w = new N5FSWriter(n5Path);
-			N5Utils.save(minConv, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{512, 512}, new GzipCompression());
+			N5Utils.save(minConv, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new GzipCompression());
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
 		}
 
@@ -161,7 +156,7 @@ public class NailFlat implements Callable<Void> {
 
 			// Using an HDF5 RAI can be slow when computing transforms, write to N5 and use that
 			N5FSWriter n5w = new N5FSWriter(n5Path);
-			N5Utils.save(maxConv, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{512, 512}, new GzipCompression());
+			N5Utils.save(maxConv, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new GzipCompression());
 			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
 		}
 
@@ -198,19 +193,18 @@ public class NailFlat implements Callable<Void> {
 		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
 
 		FinalInterval sourceInterval = null;
-		if( max != null && min != null ) {
-			// If we have heightmaps, then we can define a crop interval for source rendering
-			DoubleType maxMean = SemaUtils.getAvgValue(max);
-			DoubleType minMean = SemaUtils.getAvgValue(min);
-
-			sourceInterval = new FinalInterval(
-				new long[] {0, 0, Math.round(minMean.get()) - padding},
-				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxMean.get()) + padding});
-		} else {
-			sourceInterval = new FinalInterval(
-				new long[] {0, 0, 0},
-				new long[] {dimensions[0] - 1, dimensions[2] - 1, dimensions[1] -1});// FIXME double check this dimension swap, it came from saalfeld's hot-knife ViewFlattened
-		}
+//		if( max != null && min != null ) {
+//			// If we have heightmaps, then we can define a crop interval for source rendering
+//			DoubleType maxMean = SemaUtils.getAvgValue(max);
+//			DoubleType minMean = SemaUtils.getAvgValue(min);
+//
+//			sourceInterval = new FinalInterval(
+//				new long[] {0, 0, Math.round(minMean.get()) - padding},
+//				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxMean.get()) + padding});
+//		} else {
+        sourceInterval = new FinalInterval(
+            new long[] {0, 0, 0},
+            new long[] {dimensions[0] - 1, dimensions[2] - 1, dimensions[1] -1});// FIXME double check this dimension swap, it came from saalfeld's hot-knife ViewFlattened
 
 
 		// Make the Sources that we will use in BigWarp
