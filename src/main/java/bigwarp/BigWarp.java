@@ -3357,10 +3357,10 @@ public class BigWarp< T >
 						    System.out.println("Recomputing heightmaps...");
 							// FIXME: this code will try to use the whole cost image, this needs to be chunked and solved with overlapping tiles
                             // FIXME: reuse nailRegionBorder
-							RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costImg, bw.imagej.op()), 0, dimensions[0], dimensions[2], bw.imagej.op());
+							RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(costImg, bw.imagej.op()), 0, dimensions[0], dimensions[1], bw.imagej.op());
 							bw.minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 	
-							RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costImg, bw.imagej.op()), bw.cost.dimension(2) / 2, dimensions[0], dimensions[2], bw.imagej.op());
+							RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(costImg, bw.imagej.op()), bw.cost.dimension(1) / 2, dimensions[0], dimensions[1], bw.imagej.op());
 							bw.maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 						}
 						
@@ -3396,10 +3396,10 @@ public class BigWarp< T >
 
 							RandomAccessibleInterval<DoubleType> heightmap;
 							long offset;
-                            if( nail[1] > (float) (dimensions[1]) / 2.0 ) {
+                            if( nail[2] > (float) (dimensions[2]) / 2.0 ) {
                                 // Max heightmap
                                 heightmap = bw.maxHeightmap;
-                                offset = dimensions[1] / 2;
+                                offset = dimensions[2] / 2;
                             } else {
                                 // Min heightmap
                                 heightmap = bw.minHeightmap;
@@ -3412,10 +3412,10 @@ public class BigWarp< T >
                             BigWarp.applyNail( costRegion, nail );
 
 							// Run the actual graphcut to generate this patch of heightmap
-							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap((Img)costRegion, offset, dimensions[0], dimensions[2], bw.imagej.op());// FIXME fake casting of costRegion
+							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap((Img)costRegion, offset, dimensions[0], dimensions[1], bw.imagej.op());// FIXME fake casting of costRegion
 							RandomAccessibleInterval<DoubleType> heightmapPatch = Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 
-							FinalInterval patchInterval = Intervals.createMinMax(costRegion.min(0), costRegion.min(2), costRegion.max(0), costRegion.max(2));
+							FinalInterval patchInterval = Intervals.createMinMax(costRegion.min(0), costRegion.min(1), costRegion.max(0), costRegion.max(1));
 
 							// Copy the patch into the heightmap
 							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, patchInterval)).cursor();
@@ -3450,10 +3450,12 @@ public class BigWarp< T >
                         bw.currentTransform = ft;
 						//bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement
 
+                        System.out.println("Current transform has been updated");
+
 						final FinalInterval cropInterval = new FinalInterval(
 						new long[] {0, 0, Math.round(minMean.get()) - bw.flattenPadding},
 						new long[] {bw.fullSizeInterval.dimension(0) - 1,
-									bw.fullSizeInterval.dimension(2) - 1,
+									bw.fullSizeInterval.dimension(1) - 1,
 									Math.round(maxMean.get()) + bw.flattenPadding});
 
 						// Now regenerate the Source with the new transform and crop interval
@@ -3548,32 +3550,32 @@ public class BigWarp< T >
         RandomAccess<DoubleType> crAccess = costRegion.randomAccess();
         RandomAccess<DoubleType> hmAccess = heightmap.randomAccess();
 
-        // Nail along X border (at min/max Z of interval)
+        // Nail along X border (at min/max Y of interval)
         for( long x = costRegion.min(0); x < costRegion.max(0); x++ ) {
             pos3[0] = x;
             pos2[0] = x;
-            for( long y = costRegion.min(1); y < costRegion.max(1); y++ ) {
-                pos3[1] = y;
+            for( long z = costRegion.min(2); z < costRegion.max(2); z++ ) {
+                pos3[2] = z;
 
-                // Apply along min Z boundary
-                pos3[2] = costRegion.min(2);
-                pos2[2] = pos3[2];
+                // Apply along min Y boundary
+                pos3[1] = costRegion.min(1);
+                pos2[1] = pos3[1];
                 crAccess.setPosition(pos3);
                 hmAccess.setPosition(pos2);
                 double hmVal = hmAccess.get().getRealDouble();
-                if( y == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
+                if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);
                 } else {
                     crAccess.get().set(nailPenalty);
                 }
 
-                // Apply along max Z boundary
-                pos3[2] = costRegion.max(2);
-                pos2[2] = pos3[2];
+                // Apply along max Y boundary
+                pos3[1] = costRegion.max(1);
+                pos2[1] = pos3[1];
                 crAccess.setPosition(pos3);
                 hmAccess.setPosition(pos2);
                 hmVal = hmAccess.get().getRealDouble();
-                if( y == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
+                if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);
                 } else {
                     crAccess.get().set(nailPenalty);
@@ -3581,12 +3583,12 @@ public class BigWarp< T >
             }
         }
 
-        // Nail along Z border (at min/max X of interval)
-        for( long z = costRegion.min(2); z < costRegion.max(2); z++ ) {
-            pos3[2] = z;
-            pos2[2] = z;
-            for( long y = costRegion.min(1); y < costRegion.max(1); y++ ) {
-                pos3[1] = y;
+        // Nail along Y border (at min/max X of interval)
+        for( long y = costRegion.min(1); y < costRegion.max(1); y++ ) {
+            pos3[1] = y;
+            pos2[1] = y;
+            for( long z = costRegion.min(2); z < costRegion.max(2); z++ ) {
+                pos3[2] = z;
 
                 // Apply along min X boundary
                 pos3[0] = costRegion.min(0);
@@ -3594,7 +3596,7 @@ public class BigWarp< T >
                 crAccess.setPosition(pos3);
                 hmAccess.setPosition(pos2);
                 double hmVal = hmAccess.get().getRealDouble();
-                if( y == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
+                if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);
                 } else {
                     crAccess.get().set(nailPenalty);
@@ -3606,7 +3608,7 @@ public class BigWarp< T >
                 crAccess.setPosition(pos3);
                 hmAccess.setPosition(pos2);
                 hmVal = hmAccess.get().getRealDouble();
-                if( y == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
+                if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);
                 } else {
                     crAccess.get().set(nailPenalty);
@@ -3719,30 +3721,26 @@ public class BigWarp< T >
 		long nailY = Math.round(nail[1]);
 		long nailZ = Math.round(nail[2]);
 
-        long[] pos = new long[]{nailX, 0, nailZ};
+        long[] pos = new long[]{nailX, nailY, 0};
 
-        long yStart, yStop;
-        if( nailY < costImg.dimension(1) / 2 ) {
-        	yStart = 0;
-        	yStop = costImg.dimension(1) / 2;
+        long zStart, zStop;
+        if( nailZ < costImg.dimension(2) / 2 ) {
+        	zStart = 0;
+        	zStop = costImg.dimension(2) / 2;
 		} else {
-        	yStart = costImg.dimension(1) / 2;
-        	yStop = costImg.dimension(1);
+        	zStart = costImg.dimension(2) / 2;
+        	zStop = costImg.dimension(2);
 		}
 
-        // Loop over Y-coordinates and place nail + nail penalties
-        for( long y = yStart; y < yStop; y++ ) {
-            pos[1] = y;
+        // Loop over Z-coordinates and place nail + nail penalties
+        for( long z = zStart; z < zStop; z++ ) {
+            pos[2] = z;
             ra.setPosition(pos);
-			double pre = ra.get().getRealDouble();
-            if( y == nailY ) {
-//            	System.out.println("Placing nail at " + y + " was " + ra.get().getRealDouble() + " now 0");
+            if( z == nailZ ) {
             	ra.get().setReal(0);
             } else {
             	ra.get().setReal(nailPenalty);
             }
-            double post = ra.get().getRealDouble();
-            //if( pre != post ) System.out.println("Updating Y at " + y + " was " + pre + " now is " + post );
 
         }
     }

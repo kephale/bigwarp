@@ -221,7 +221,7 @@ public class NailFlat implements Callable<Void> {
 		// Load in a bunch of global-ish variables to BigWarp
 		bw.setImagej(imagej);
 		bw.setIsMovingDisplayTransformed(true);
-		bw.setFullSizeInterval(Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]));
+		bw.setFullSizeInterval(Intervals.createMinMax(0, 0, 0, dimensions[0]-1, dimensions[2]-1, dimensions[1]-1));
 		bw.setRawMipmaps(rawMipmaps);
 		bw.setQueue(queue);
 		bw.setMinHeightmap(min);
