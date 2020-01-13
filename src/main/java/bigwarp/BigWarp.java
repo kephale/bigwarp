@@ -3350,64 +3350,68 @@ public class BigWarp< T >
 						RandomAccessibleInterval<DoubleType> costImg = bw.getCostImg();
 						
 						long[] dimensions = new long[3];
-						bw.fullSizeInterval.dimensions(dimensions);
-						
-						// First, check if the min/max heightmaps are there, if not then compute them
-						if( bw.minHeightmap == null || bw.maxHeightmap == null ) {
-						    System.out.println("Recomputing heightmaps...");
+						costImg.dimensions(dimensions);
 
-						    bw.recomputeHeightmaps();
-						}
-						
 						// Now process the nails
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
-						long[] pos = new long[3];
-						for( int k = 0; k < nails.size(); k++ ) {
-							Double[] nail = nails.get(k);
 
-							// FIXME: we might want to snap the nail to a grid at this point
-							// FIXME: we might want to skip nails that have already been applied
-							
-							long[] regionMin = new long[3];
-							long[] regionMax = new long[3];
-							// TODO this should not be uniform for all dimensions
-							for( int d = 0; d < nail.length; d++ ) {
-								regionMin[d] = (long) Math.max(nail[d] - bw.nailPadding, 0);
-								regionMax[d] = (long) Math.min(nail[d] + bw.nailPadding, dimensions[d]-1);
+                        if( nails.size() > 0 ) {
+							// Find the region boundary around *all* nails
+							long[] regionMin = new long[]{dimensions[0] - 1, dimensions[1] - 1, dimensions[2] - 1};
+							long[] regionMax = new long[]{0, 0, 0};
+							for (int k = 0; k < nails.size(); k++) {
+								Double[] nail = nails.get(k);
+
+								// FIXME: we might want to snap the nail to a grid at this point
+
+								// TODO this should not be uniform for all dimensions
+								for (int d = 0; d < nail.length; d++) {
+									regionMin[d] = (long) Math.min(regionMin[d], Math.max(nail[d] - bw.nailPadding, 0));
+									regionMax[d] = (long) Math.max(regionMax[d], Math.min(nail[d] + bw.nailPadding, dimensions[d] - 1));
+								}
 							}
-							
+
 							// Fetch the known cost data
 							IntervalView<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
-							
+
 							// Create a new RAI and copy the cost region
 							Img<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) costRegion);
 							net.imglib2.Cursor<DoubleType> nrCursor = Views.flatIterable(nailRegion).cursor();
 							net.imglib2.Cursor<DoubleType> sourceCursor = Views.flatIterable(costRegion).cursor();
-							while( sourceCursor.hasNext() ) {
+							while (sourceCursor.hasNext()) {
 								sourceCursor.fwd();
 								nrCursor.fwd();
 								nrCursor.get().set(sourceCursor.get());
 							}
 
+							// This logic is risky FIXME
 							RandomAccessibleInterval<DoubleType> heightmap;
 							long offset;
-                            if( nail[2] > (float) (dimensions[2]) / 2.0 ) {
-                                // Max heightmap
-                                heightmap = bw.maxHeightmap;
-                                offset = dimensions[2] / 2;
-                            } else {
-                                // Min heightmap
-                                heightmap = bw.minHeightmap;
-                                offset = 0;
-                            }
+							if (regionMin[2] > (float) (dimensions[2]) / 2.0 && regionMax[2] > (float) (dimensions[2]) / 2.0) {
+								// Max heightmap
+								heightmap = bw.maxHeightmap;
+								offset = dimensions[2] / 2;
+							} else {
+								// Min heightmap
+								heightmap = bw.minHeightmap;
+								offset = 0;
+							}
 
-                            bw.nailRegionBorder( costRegion, heightmap );
-							
-							// This method changes the contents of costRegion based on the nail. If we want to apply multiple nails in a region, this is the place to do it
-                            BigWarp.applyNail( costRegion, nail );
+							// Nail along the border
+							bw.nailRegionBorder(costRegion, heightmap);
+
+							// Now apply nails
+							for (int k = 0; k < nails.size(); k++) {
+								Double[] nail = nails.get(k);
+
+								// FIXME: we might want to snap the nail to a grid at this point
+
+								// This method changes the contents of costRegion based on the nail. If we want to apply multiple nails in a region, this is the place to do it
+								BigWarp.applyNail(costRegion, nail);
+							}
 
 							// Run the actual graphcut to generate this patch of heightmap
-							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap((Img)costRegion, offset, dimensions[0], dimensions[1], bw.imagej.op());// FIXME fake casting of costRegion
+							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(costRegion, offset, dimensions[0], dimensions[1], bw.imagej.op());
 							RandomAccessibleInterval<DoubleType> heightmapPatch = Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 
 							FinalInterval patchInterval = Intervals.createMinMax(costRegion.min(0), costRegion.min(1), costRegion.max(0), costRegion.max(1));
@@ -3415,12 +3419,12 @@ public class BigWarp< T >
 							// Copy the patch into the heightmap
 							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, patchInterval)).cursor();
 							net.imglib2.Cursor<DoubleType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
-							while( patchCursor.hasNext() ) {
+							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
 								hmCursor.fwd();
 								hmCursor.get().set(patchCursor.get());
 							}
-                        }
+						}
 
 						// At this point the min and max heightmaps are updated to account for the nails
 						DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
@@ -3442,8 +3446,8 @@ public class BigWarp< T >
 								minMean.get(),
 								maxMean.get());
 
-                        bw.currentTransform = ft;
-						//bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement
+                        //bw.currentTransform = ft;// fixme check maybe bigwarp is doing an extra transform?
+						bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement
 
                         System.out.println("Current transform has been updated");
 
@@ -3563,23 +3567,23 @@ public class BigWarp< T >
      */
     private RandomAccessibleInterval<DoubleType> nailRegionBorder(IntervalView<DoubleType> costRegion, RandomAccessibleInterval<DoubleType> heightmap) {
 	    // Nail periphery to the heightmap along X
-        long[] pos3 = new long[3];// for costRegion
-        long[] pos2 = new long[3];// for heightmap
+        long[] crPos = new long[3];// for costRegion
+        long[] hmPos = new long[3];// for heightmap
         RandomAccess<DoubleType> crAccess = costRegion.randomAccess();
         RandomAccess<DoubleType> hmAccess = heightmap.randomAccess();
 
         // Nail along X border (at min/max Y of interval)
         for( long x = costRegion.min(0); x < costRegion.max(0); x++ ) {
-            pos3[0] = x;
-            pos2[0] = x;
+            crPos[0] = x;
+            hmPos[0] = x;
             for( long z = costRegion.min(2); z < costRegion.max(2); z++ ) {
-                pos3[2] = z;
+                crPos[2] = z;
 
                 // Apply along min Y boundary
-                pos3[1] = costRegion.min(1);
-                pos2[1] = pos3[1];
-                crAccess.setPosition(pos3);
-                hmAccess.setPosition(pos2);
+                crPos[1] = costRegion.min(1);
+                hmPos[1] = crPos[1];
+                crAccess.setPosition(crPos);
+                hmAccess.setPosition(hmPos);
                 double hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);
@@ -3588,10 +3592,10 @@ public class BigWarp< T >
                 }
 
                 // Apply along max Y boundary
-                pos3[1] = costRegion.max(1);
-                pos2[1] = pos3[1];
-                crAccess.setPosition(pos3);
-                hmAccess.setPosition(pos2);
+                crPos[1] = costRegion.max(1);
+                hmPos[1] = crPos[1];
+                crAccess.setPosition(crPos);
+                hmAccess.setPosition(hmPos);
                 hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);
@@ -3603,16 +3607,16 @@ public class BigWarp< T >
 
         // Nail along Y border (at min/max X of interval)
         for( long y = costRegion.min(1); y < costRegion.max(1); y++ ) {
-            pos3[1] = y;
-            pos2[1] = y;
+            crPos[1] = y;
+            hmPos[1] = y;
             for( long z = costRegion.min(2); z < costRegion.max(2); z++ ) {
-                pos3[2] = z;
+                crPos[2] = z;
 
                 // Apply along min X boundary
-                pos3[0] = costRegion.min(0);
-                pos2[0] = pos3[0];
-                crAccess.setPosition(pos3);
-                hmAccess.setPosition(pos2);
+                crPos[0] = costRegion.min(0);
+                hmPos[0] = crPos[0];
+                crAccess.setPosition(crPos);
+                hmAccess.setPosition(hmPos);
                 double hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);
@@ -3621,10 +3625,10 @@ public class BigWarp< T >
                 }
 
                 // Apply along max X boundary
-                pos3[0] = costRegion.max(0);
-                pos2[0] = pos3[0];
-                crAccess.setPosition(pos3);
-                hmAccess.setPosition(pos2);
+                crPos[0] = costRegion.max(0);
+                hmPos[0] = crPos[0];
+                crAccess.setPosition(crPos);
+                hmAccess.setPosition(hmPos);
                 hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);

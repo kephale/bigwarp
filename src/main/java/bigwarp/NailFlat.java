@@ -103,11 +103,15 @@ public class NailFlat implements Callable<Void> {
 		if( args.length == 0 )
 			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5",
 					"-d", "/zcorr/Sec22___20200106_083252",
-					"-f", "/flatten/Sec22___20200110_160724",
-					"-s", "/cost/Sec22___20200110_160724"};
+					"-f", "/flatten/Sec22___20200113_kyle001",
+					"-s", "/cost/Sec22___20200110_160724",
+//					"-u"
+					"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-bottom.h5",
+					"--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-top.h5"
+					};
 			//args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "/cost/Sec23___20200110_152920", "-u"};
 		// to regenerate heightmap from HDF5 use these args
-		    //args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};
+		    //args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};
 
 		CommandLine.call(new NailFlat(), args);
 		//new NailFlat().call();
@@ -133,8 +137,8 @@ public class NailFlat implements Callable<Void> {
 
 		// Min heightmap: Load from N5 if possible
 		if( minDataset != null && n5.exists(minDataset) ) {
-			System.out.println("Loading min face from N5");
-			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
+			System.out.println("Loading min face from N5 " + minDataset);
+			min = N5Utils.open(n5, minDataset);
 		} else if( minDataset != null && new File(minDataset).exists() ) {
 			// If there is no minDataset, then assume this is an HDF5
 			System.out.println("Loading min face from HDF5");
@@ -151,8 +155,8 @@ public class NailFlat implements Callable<Void> {
 
 		// Min heightmap: Load from N5 if possible
 		if( maxDataset != null && n5.exists(maxDataset) ) {
-			System.out.println("Loading max face from N5");
-			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
+			System.out.println("Loading max face from N5 " + maxDataset);
+			max = N5Utils.open(n5, maxDataset);
 		} else if(  maxDataset != null && new File(maxDataset).exists() ) {
 			// If there is no maxDataset, then assume this is an HDF5
 			System.out.println("Loading max face from HDF5");

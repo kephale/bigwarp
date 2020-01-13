@@ -77,29 +77,31 @@ public class SemaUtils {
         for( pos[0] = 0; pos[0] < rai.dimension(0); pos[0]++ ) {
             for( pos[1] = 0; pos[1] < rai.dimension(1); pos[1]++ ) {
                 ra.setPosition(pos);
-                dAvg += ra.get().getRealDouble();
-                count++;
+                if( !Double.isNaN(ra.get().getRealDouble()) && !Double.isInfinite(ra.get().getRealDouble()) ) {
+                    dAvg += ra.get().getRealDouble();
+                    count++;
+                }
             }
         }
 
         return new DoubleType(dAvg / count);
     }
 
-    public static DoubleType getAvgValue(Iterable<DoubleType> ii) throws Exception {
-        if( !ii.iterator().hasNext() ) {
-            throw new Exception("Iterable is empty");
-        }
-        DoubleType avg = (DoubleType) ii.iterator().next().copy();
-        long count = 0;
-        avg.setReal(0);
-        Iterator<DoubleType> it = ii.iterator();
-        DoubleType val;
-        while( it.hasNext() ) {
-            val = it.next();
-            avg.add(val);
-            count++;
-        }
-        avg.setReal(avg.getRealDouble()/count);
-        return avg;
-    }
+//    public static DoubleType getAvgValue(Iterable<DoubleType> ii) throws Exception {
+//        if( !ii.iterator().hasNext() ) {
+//            throw new Exception("Iterable is empty");
+//        }
+//        DoubleType avg = (DoubleType) ii.iterator().next().copy();
+//        long count = 0;
+//        avg.setReal(0);
+//        Iterator<DoubleType> it = ii.iterator();
+//        DoubleType val;
+//        while( it.hasNext() ) {
+//            val = it.next();
+//            avg.add(val);
+//            count++;
+//        }
+//        avg.setReal(avg.getRealDouble()/count);
+//        return avg;
+//    }
 }
