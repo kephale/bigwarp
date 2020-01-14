@@ -3427,13 +3427,14 @@ public class BigWarp< T >
 							long startTime = System.nanoTime();
 
 							// Run the actual graphcut to generate this patch of heightmap, we need to zeroMin because of upstream methods
-							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(costRegion), offset, dimensions[0], dimensions[1], bw.imagej.op());
+							// TODO if costRegion is subsampled, then check that these dimensions are correct, they should correspond to the costRegion's true interval
+							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(costRegion), offset, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
 
 							System.out.println("Graphcut done took: " + (System.nanoTime() - startTime));
 
-							// Convert to double *and* undo the zeroMin offset
+							// Convert to double *and* undo the zeroMin offset *and* undo height offset
 							RandomAccessibleInterval<DoubleType> heightmapPatch = Views.translate(
-									Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType()),
+									Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble() + costRegion.min(2)), new DoubleType()),
 									costRegion.min(0), costRegion.min(1));
 
 							FinalInterval patchInterval = Intervals.createMinMax(costRegion.min(0), costRegion.min(1), costRegion.max(0), costRegion.max(1));
@@ -3559,29 +3560,6 @@ public class BigWarp< T >
 			}
 		}
 		
-	}
-
-	private void recomputeHeightmaps() {
-		// FIXME: reuse nailRegionBorder for higher resolution
-		RandomAccessibleInterval<DoubleType> fullCostImg = getCostImg();
-
-		// Prepare for the 200-offset
-		System.out.println("Computing heightmaps with 200 offset");
-		long[] sampleSteps = new long[]{100, 50, 200};
-		FinalInterval interval200 = Intervals.createMinMax(0, 0, 0, (long) Math.floor((float) fullCostImg.dimension(0) / sampleSteps[0]), (long) Math.floor((float)fullCostImg.dimension(1) / sampleSteps[1]), (long) Math.floor((float)fullCostImg.dimension(2) / sampleSteps[2]));
-		IntervalView<DoubleType> offsetCost = Views.translate(fullCostImg, sampleSteps[0] / 2, sampleSteps[1] / 2, 1);
-		RandomAccessible<DoubleType> sampledCost = Views.subsample(offsetCost, sampleSteps[0], sampleSteps[1], sampleSteps[2]);
-		IntervalView<DoubleType> cost200 = Views.interval(sampledCost,interval200);
-
-		// Make sure costs are stored in the right block dimension (e.g. flat)o
-
-		System.out.println("Computing min map");
-		RandomAccessibleInterval<IntType> intMin = getScaledSurfaceMap(getBotImg(cost200, imagej.op()), 0, fullSizeInterval.dimension(0), fullSizeInterval.dimension(1), imagej.op());
-		minHeightmap = Converters.convert(intMin, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
-
-		System.out.println("Computing max map");
-		RandomAccessibleInterval<IntType> intMax = getScaledSurfaceMap(getTopImg(cost200, imagej.op()), cost.dimension(1) / 2, fullSizeInterval.dimension(0), fullSizeInterval.dimension(1), imagej.op());
-		maxHeightmap = Converters.convert(intMax, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
 	}
 
 	/**
