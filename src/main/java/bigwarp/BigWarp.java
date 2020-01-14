@@ -2918,7 +2918,8 @@ public class BigWarp< T >
             {
 				currentLandmark.localize( ptarrayLoc );
 
-				BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);
+				BigWarp.this.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
+				//BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);// TODO this was the previous
 				addPoint( ptBackLoc, true, viewerP );
 
 				// can use this to sanity check, but the P points need to be stored in transformed coords
