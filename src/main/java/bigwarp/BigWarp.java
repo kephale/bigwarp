@@ -3356,6 +3356,7 @@ public class BigWarp< T >
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
 
                         if( nails.size() > 0 ) {
+                        	System.out.println("Applying " + nails.size() + "  nails");
 							// Find the region boundary around *all* nails
 							long[] regionMin = new long[]{dimensions[0] - 1, dimensions[1] - 1, dimensions[2] - 1};
 							long[] regionMax = new long[]{0, 0, 0};
@@ -3371,8 +3372,14 @@ public class BigWarp< T >
 								}
 							}
 
+							System.out.println("Nail region is: ");
+							System.out.println("Min: " + regionMin[0] + " " + regionMin[1] + " " + regionMin[2]);
+							System.out.println("Max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
+
 							// Fetch the known cost data
 							IntervalView<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
+
+							// TODO consider a subsample view at this point to help with the graphcut
 
 							// Create a new RAI and copy the cost region
 							Img<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) costRegion);
@@ -3391,14 +3398,19 @@ public class BigWarp< T >
 								// Max heightmap
 								heightmap = bw.maxHeightmap;
 								offset = dimensions[2] / 2;
+								System.out.println("Updating max heightmap");
 							} else {
 								// Min heightmap
 								heightmap = bw.minHeightmap;
 								offset = 0;
+								System.out.println("Updating min heightmap");
 							}
+							// FIXME: dont update bw.heightmaps, instead make local versions because nails are going to be repeatedly applied in this implementation
+							// FIXME^2: this might not be a concern because the border conditions are held constant, the computation is deterministic, so result shouldn't change
 
 							// Nail along the border
 							bw.nailRegionBorder(costRegion, heightmap);
+							System.out.println("Region border has been nailed");
 
 							// Now apply nails
 							for (int k = 0; k < nails.size(); k++) {
@@ -3409,10 +3421,18 @@ public class BigWarp< T >
 								// This method changes the contents of costRegion based on the nail. If we want to apply multiple nails in a region, this is the place to do it
 								BigWarp.applyNail(costRegion, nail);
 							}
+							System.out.println("All nails have been applied. Now solving graphcut...");
+							long startTime = System.nanoTime();
 
-							// Run the actual graphcut to generate this patch of heightmap
-							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(costRegion, offset, dimensions[0], dimensions[1], bw.imagej.op());
-							RandomAccessibleInterval<DoubleType> heightmapPatch = Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+							// Run the actual graphcut to generate this patch of heightmap, we need to zeroMin because of upstream methods
+							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(costRegion), offset, dimensions[0], dimensions[1], bw.imagej.op());
+
+							System.out.println("Graphcut done took: " + (System.nanoTime() - startTime));
+
+							// Convert to double *and* undo the zeroMin offset
+							RandomAccessibleInterval<DoubleType> heightmapPatch = Views.translate(
+									Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType()),
+									costRegion.min(0), costRegion.min(1));
 
 							FinalInterval patchInterval = Intervals.createMinMax(costRegion.min(0), costRegion.min(1), costRegion.max(0), costRegion.max(1));
 
@@ -3424,6 +3444,7 @@ public class BigWarp< T >
 								hmCursor.fwd();
 								hmCursor.get().set(patchCursor.get());
 							}
+							System.out.println("Heightmap has been patched");
 						}
 
 						// At this point the min and max heightmaps are updated to account for the nails
@@ -3446,8 +3467,8 @@ public class BigWarp< T >
 								minMean.get(),
 								maxMean.get());
 
-                        //bw.currentTransform = ft;// fixme check maybe bigwarp is doing an extra transform?
-						bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement
+                        bw.currentTransform = ft;
+						//bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement
 
                         System.out.println("Current transform has been updated");
 
@@ -3462,6 +3483,7 @@ public class BigWarp< T >
 						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
 																			  new Source[]{fAndO[1]},
 																			  new String[]{"Flat", "Original"});
+
 						bw.data = bwData;
 
 						if ( ft == null )
@@ -3677,8 +3699,8 @@ public class BigWarp< T >
 					Transform.createTransformedInterval(
 							Views.permute(rawMipmaps[s], 1, 2),
 							cropInterval,
-							//scale3D,
-							transformSequenceFlat,
+							scale3D,
+							//transformSequenceFlat,
 							new UnsignedByteType(0));
 			final RandomAccessibleInterval<UnsignedByteType> originalSource =
 					Transform.createTransformedInterval(
