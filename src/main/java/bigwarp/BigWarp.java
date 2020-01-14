@@ -330,7 +330,8 @@ public class BigWarp< T >
     //private static double nailPenalty = 1000;
 
 	private long flattenPadding = 2000;
-	private long nailPadding = 200;
+	//private long nailPadding = 200;
+	private long nailPadding = 20;
 	private net.imagej.ImageJ imagej;
     
     private RandomAccessibleInterval<DoubleType> sourceCostImg;
@@ -3484,6 +3485,7 @@ public class BigWarp< T >
 						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
 																			  new Source[]{fAndO[1]},
 																			  new String[]{"Flat", "Original"});
+						// FIXME BigWarpData probably doesnt have to be recreated, note that the if( index ... )clauses below *OVERWRITE* the Source transform
 
 						bw.data = bwData;
 
@@ -3499,13 +3501,13 @@ public class BigWarp< T >
 							bw.landmarkModel.updateAllWarpedPoints();
 
 							// update sources with the new transformation
-							bw.setTransformationAll(ft);
+							bw.setTransformationAll(ft.inverse());
 							bw.fitBaselineWarpMagModel();
 						}
 						else
 						{
 							// update the transform and warped point
-							bw.setTransformationMovingSourceOnly(ft);
+							bw.setTransformationMovingSourceOnly(ft.inverse());
 						}
 
 						// update fixed point - but don't allow undo/redo
@@ -3700,8 +3702,8 @@ public class BigWarp< T >
 					Transform.createTransformedInterval(
 							Views.permute(rawMipmaps[s], 1, 2),
 							cropInterval,
-							scale3D,
-							//transformSequenceFlat,
+							//scale3D,
+							transformSequenceFlat,
 							new UnsignedByteType(0));
 			final RandomAccessibleInterval<UnsignedByteType> originalSource =
 					Transform.createTransformedInterval(
