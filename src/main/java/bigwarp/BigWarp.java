@@ -2256,10 +2256,19 @@ public class BigWarp< T >
 
     public void saveFlatten() throws IOException {
         N5FSWriter n5 = new N5FSWriter(n5Path);
-        N5Utils.save( minHeightmap, n5, flattenDataset + minFaceDatasetName, new int[]{512, 512}, new GzipCompression() );
-        N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{512, 512}, new GzipCompression() );
+        N5Utils.save( minHeightmap, n5, flattenDataset + minFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
+        N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
+
+        // At this point the min and max heightmaps are updated to account for the nails
+        DoubleType minMean = SemaUtils.getAvgValue(minHeightmap);
+        DoubleType maxMean = SemaUtils.getAvgValue(maxHeightmap);
+
+        n5.setAttribute(flattenDataset + minFaceDatasetName, "mean", minMean.get());
+        n5.setAttribute(flattenDataset + maxFaceDatasetName, "mean", maxMean.get());
+        System.out.println("Saving heightmaps: " + flattenDataset + minFaceDatasetName + " " + flattenDataset + maxFaceDatasetName);
 
         // Now save nails
+        // TODO Consider reading existing nails and appending?
         List<Double[]> nails = landmarkModel.getPoints(false);
 		ArrayImg<DoubleType, DoubleArray> nailImg = ArrayImgs.doubles(nails.size(), 3);
 		ArrayRandomAccess<DoubleType> nailAccess = nailImg.randomAccess();
@@ -2275,6 +2284,7 @@ public class BigWarp< T >
 				nailAccess.get().set(nail[d]);
 			}
 		}
+		N5Utils.save( nailImg, n5, flattenDataset + nailDatasetName, new int[]{2048, 3}, new RawCompression() );
     }
 
     public void setFlattenSubContainer(String flattenDataset) {
@@ -3371,7 +3381,6 @@ public class BigWarp< T >
 
 								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
 
-								// TODO this should not be uniform for all dimensions
 								for (int d = 0; d < nail.length; d++) {
 									regionMin[d] = (long) Math.min(regionMin[d], Math.max(nail[d] - bw.nailPadding, 0));
 									regionMax[d] = (long) Math.max(regionMax[d], Math.min(nail[d] + bw.nailPadding, dimensions[d] - 1));
@@ -3462,21 +3471,11 @@ public class BigWarp< T >
 							System.out.println("Heightmap has been patched");
 						}
 
-						// At this point the min and max heightmaps are updated to account for the nails
-						DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
-						DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
-
 						// Now export the results to our flatten dataset in the n5
-                        N5FSWriter n5 = new N5FSWriter(bw.n5Path);
-                        String minDataset = bw.flattenDataset + BigWarp.minFaceDatasetName;
-                        String maxDataset = bw.flattenDataset + BigWarp.maxFaceDatasetName;
-                        N5Utils.save(bw.minHeightmap, n5, minDataset, new int[]{1024, 1024}, new RawCompression());
-                        N5Utils.save(bw.maxHeightmap, n5, maxDataset, new int[]{1024, 1024}, new RawCompression());
-                        n5.setAttribute(minDataset, "mean", minMean.get());
-                        n5.setAttribute(maxDataset, "mean", maxMean.get());
+                        bw.saveFlatten();
 
-                        System.out.println("Saving heightmaps: " + minDataset + " " + maxDataset);
-
+                        DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
+                        DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
                         System.out.println("minY is " +  minMean.get() + " and maxY is " + maxMean.get());
 
 						final FlattenTransform ft = new FlattenTransform(
