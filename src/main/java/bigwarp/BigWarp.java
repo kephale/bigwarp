@@ -3349,10 +3349,13 @@ public class BigWarp< T >
 						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
 						
 						// The code below is written expecting that costImg is lazy, otherwise it might run out of memory on full scale data
-						RandomAccessibleInterval<DoubleType> costImg = bw.getCostImg();
+						RandomAccessibleInterval<DoubleType> costImg = Views.permute(bw.getCostImg(), 1, 2);
 						
 						long[] dimensions = new long[3];
 						costImg.dimensions(dimensions);
+                        //bw.rawMipmaps[0].dimensions(dimensions);
+
+                        System.out.println("cost dimensions: " + dimensions[0] + " " + dimensions[1] + " " + dimensions[2]);
 
 						// Now process the nails
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
@@ -3363,9 +3366,9 @@ public class BigWarp< T >
 							long[] regionMin = new long[]{dimensions[0] - 1, dimensions[1] - 1, dimensions[2] - 1};
 							long[] regionMax = new long[]{0, 0, 0};
 							for (int k = 0; k < nails.size(); k++) {
-								Double[] nail = nails.get(k);
+								long[] nail = nailToGrid(nails.get(k));
 
-								// FIXME: we might want to snap the nail to a grid at this point
+								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
 
 								// TODO this should not be uniform for all dimensions
 								for (int d = 0; d < nail.length; d++) {
@@ -3407,8 +3410,6 @@ public class BigWarp< T >
 								offset = 0;
 								System.out.println("Updating min heightmap");
 							}
-							// FIXME: dont update bw.heightmaps, instead make local versions because nails are going to be repeatedly applied in this implementation
-							// FIXME^2: this might not be a concern because the border conditions are held constant, the computation is deterministic, so result shouldn't change
 
 							// Nail along the border
 							bw.nailRegionBorder(costRegion, heightmap);
@@ -3417,8 +3418,7 @@ public class BigWarp< T >
 							// Now apply nails
 							for (int k = 0; k < nails.size(); k++) {
 								Double[] nail = nails.get(k);
-
-								// FIXME: we might want to snap the nail to a grid at this point
+								// Note, the nail will be snapped to grid during applyNail
 
 								// This method changes the contents of costRegion based on the nail. If we want to apply multiple nails in a region, this is the place to do it
 								BigWarp.applyNail(costRegion, nail);
@@ -3428,16 +3428,27 @@ public class BigWarp< T >
 
 							// Run the actual graphcut to generate this patch of heightmap, we need to zeroMin because of upstream methods
 							// TODO if costRegion is subsampled, then check that these dimensions are correct, they should correspond to the costRegion's true interval
+                            offset = costRegion.min(2);
+                            System.out.println("Patch offset: " + offset);
+
 							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(costRegion), offset, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
 
 							System.out.println("Graphcut done took: " + (System.nanoTime() - startTime));
 
 							// Convert to double *and* undo the zeroMin offset *and* undo height offset
 							RandomAccessibleInterval<DoubleType> heightmapPatch = Views.translate(
-									Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble() + costRegion.min(2)), new DoubleType()),
+									Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType()),
 									costRegion.min(0), costRegion.min(1));
 
 							FinalInterval patchInterval = Intervals.createMinMax(costRegion.min(0), costRegion.min(1), costRegion.max(0), costRegion.max(1));
+
+							System.out.println("Patching heightmap at: ");
+							System.out.println("Min: " + patchInterval.min(0) + " " + patchInterval.min(1));
+							System.out.println("Max: " + patchInterval.max(0) + " " + patchInterval.max(1));
+
+							System.out.println("Previous patch average value: " + SemaUtils.getAvgValue(Views.interval(heightmap, patchInterval)));
+							System.out.println("Replacement patch average value: " + SemaUtils.getAvgValue(heightmapPatch));
+
 
 							// Copy the patch into the heightmap
 							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, patchInterval)).cursor();
@@ -3445,7 +3456,7 @@ public class BigWarp< T >
 							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
 								hmCursor.fwd();
-								hmCursor.get().set(patchCursor.get());
+								hmCursor.get().set(patchCursor.get().get());
 							}
 							System.out.println("Heightmap has been patched");
 						}
@@ -3487,12 +3498,12 @@ public class BigWarp< T >
 																			  new Source[]{fAndO[1]},
 																			  new String[]{"Flat", "Original"});
 						// FIXME BigWarpData probably doesnt have to be recreated, note that the if( index ... )clauses below *OVERWRITE* the Source transform
-
 						bw.data = bwData;
 
 						if ( ft == null )
 							return;
 
+						//
 						if ( index < 0 )
 						{
 							// reset active warped points
@@ -3507,6 +3518,7 @@ public class BigWarp< T >
 						}
 						else
 						{
+						    // FIXME this needs to be reconciled with the recreation of bigwarpdata within this solve thread
 							// update the transform and warped point
 							bw.setTransformationMovingSourceOnly(ft.inverse());
 						}
@@ -3737,18 +3749,28 @@ public class BigWarp< T >
 		return new Source<?>[]{volatileMipmapSourceFlat, volatileMipmapSourceOriginal};
 	}
 
+    /**
+     * Take a nail in source space and snap it to a grid (presumably determined by cost function subsampling)
+     * @param inNail
+     * @return nail snapped to grid
+     */
+	private static long[] nailToGrid(Double[] inNail) {
+        //long[] outNail = new long[]{Math.round(inNail[0]), Math.round(inNail[2]), Math.round(inNail[1])};// FIXME this code currently swaps nail axes
+
+        long[] outNail = new long[]{Math.round(inNail[0]), Math.round(inNail[1]), Math.round(inNail[2])};
+
+        return outNail;
+    }
+
     private static void applyNail(RandomAccessibleInterval<DoubleType> costImg, Double[] nail) {
         RandomAccess<DoubleType> ra = costImg.randomAccess();
 
-        // FIXME: this is where nails should snap to the cost-function gridding
-		long nailX = Math.round(nail[0]);
-		long nailY = Math.round(nail[1]);
-		long nailZ = Math.round(nail[2]);
+        long[] gridNail = nailToGrid(nail);
 
-        long[] pos = new long[]{nailX, nailY, 0};
+        long[] pos = new long[]{gridNail[0], gridNail[1], 0};
 
         long zStart, zStop;
-        if( nailZ < costImg.dimension(2) / 2 ) {
+        if( gridNail[2] < costImg.dimension(2) / 2 ) {
         	zStart = 0;
         	zStop = costImg.dimension(2) / 2;
 		} else {
@@ -3760,7 +3782,7 @@ public class BigWarp< T >
         for( long z = zStart; z < zStop; z++ ) {
             pos[2] = z;
             ra.setPosition(pos);
-            if( z == nailZ ) {
+            if( z == gridNail[2] ) {
             	ra.get().setReal(0);
             } else {
             	ra.get().setReal(nailPenalty);

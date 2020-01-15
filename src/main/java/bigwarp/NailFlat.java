@@ -226,6 +226,11 @@ public class NailFlat implements Callable<Void> {
                                                                    new Source[]{fAndO[1]},
                                                                    new String[]{"Flat", "Original"});
 
+		System.out.println("Source dimensions: " +
+				fAndO[1].getSource(0,0).dimension(0) + " " +
+				fAndO[1].getSource(0,0).dimension(1) + " " +
+				fAndO[1].getSource(0,0).dimension(2));
+
 		ProgressWriterIJ progress = new ProgressWriterIJ();
 
 		@SuppressWarnings( "unchecked" )
