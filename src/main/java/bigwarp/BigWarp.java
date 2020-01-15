@@ -71,6 +71,7 @@ import org.janelia.saalfeldlab.hotknife.util.Transform;
 import org.janelia.saalfeldlab.n5.GzipCompression;
 import org.janelia.saalfeldlab.n5.N5FSReader;
 import org.janelia.saalfeldlab.n5.N5FSWriter;
+import org.janelia.saalfeldlab.n5.RawCompression;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import org.janelia.utility.ui.RepeatingReleasedEventsFixer;
 import org.jdom2.Document;
@@ -3464,6 +3465,17 @@ public class BigWarp< T >
 						// At this point the min and max heightmaps are updated to account for the nails
 						DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
 						DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
+
+						// Now export the results to our flatten dataset in the n5
+                        N5FSWriter n5 = new N5FSWriter(bw.n5Path);
+                        String minDataset = bw.flattenDataset + BigWarp.minFaceDatasetName;
+                        String maxDataset = bw.flattenDataset + BigWarp.maxFaceDatasetName;
+                        N5Utils.save(bw.minHeightmap, n5, minDataset, new int[]{1024, 1024}, new RawCompression());
+                        N5Utils.save(bw.maxHeightmap, n5, maxDataset, new int[]{1024, 1024}, new RawCompression());
+                        n5.setAttribute(minDataset, "mean", minMean.get());
+                        n5.setAttribute(maxDataset, "mean", maxMean.get());
+
+                        System.out.println("Saving heightmaps: " + minDataset + " " + maxDataset);
 
                         System.out.println("minY is " +  minMean.get() + " and maxY is " + maxMean.get());
 
