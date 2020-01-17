@@ -3379,6 +3379,8 @@ public class BigWarp< T >
 							long[] regionMin = new long[]{dimensions[0] - 1, dimensions[1] - 1, dimensions[2] - 1};
 							long[] regionMax = new long[]{0, 0, 0};
 							for (int k = 0; k < nails.size(); k++) {
+
+								// nailToGrid might need to take step and offset, because the region to be nailed might be arbitrary
 								long[] nail = nailToGrid(nails.get(k));
 
 								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
@@ -3394,6 +3396,7 @@ public class BigWarp< T >
 							System.out.println("Max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
 							// Fetch the known cost data
+							// TODO when regionMin and regionMax are used, they might also need to be snapped to grid *if* the cost function is only computed with a step-size
 							IntervalView<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
 
 							// TODO consider a subsample view at this point to help with the graphcut
@@ -3439,19 +3442,22 @@ public class BigWarp< T >
 							long startTime = System.nanoTime();
 
 							// Run the actual graphcut to generate this patch of heightmap, we need to zeroMin because of upstream methods
-							// TODO if costRegion is subsampled, then check that these dimensions are correct, they should correspond to the costRegion's true interval
+							// TODO if costRegion is subsampled, then check that this offset is correct it works with the true interval
                             offset = costRegion.min(2);
                             System.out.println("Patch offset: " + offset);
 
+                            // TODO if costRegion is subsampled, then check that these dimensions are correct, they should correspond to the costRegion's true interval
 							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(costRegion), offset, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
 
 							System.out.println("Graphcut done took: " + (System.nanoTime() - startTime));
 
 							// Convert to double *and* undo the zeroMin offset *and* undo height offset
+							// TODO if costRegion is subsampled, then check that these dimensions are correct, they should correspond to the costRegion's true interval
 							RandomAccessibleInterval<DoubleType> heightmapPatch = Views.translate(
 									Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType()),
 									costRegion.min(0), costRegion.min(1));
 
+							// TODO if costRegion is subsampled, then check that these dimensions are correct, they should correspond to the costRegion's true interval
 							FinalInterval patchInterval = Intervals.createMinMax(costRegion.min(0), costRegion.min(1), costRegion.max(0), costRegion.max(1));
 
 							System.out.println("Patching heightmap at: ");
@@ -3474,7 +3480,7 @@ public class BigWarp< T >
 						}
 
 						// Now export the results to our flatten dataset in the n5
-                        bw.saveFlatten();
+                        //bw.saveFlatten();
 
                         DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
                         DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
