@@ -3525,22 +3525,19 @@ public class BigWarp< T >
 
                         System.out.println("Current transform has been updated");
 
-						final FinalInterval cropInterval = new FinalInterval(
-						new long[] {0, 0, Math.round(minMean.get()) - bw.flattenPadding},
-						new long[] {bw.fullSizeInterval.dimension(0) - 1,
-									bw.fullSizeInterval.dimension(1) - 1,
-									Math.round(maxMean.get()) + bw.flattenPadding});
-
-						double[] tpt = new double[]{6012, 7252, 3711};
-						double[] outpt = new double[3];
+//						final FinalInterval cropInterval = new FinalInterval(
+//						new long[] {0, 0, Math.round(minMean.get()) - bw.flattenPadding},
+//						new long[] {bw.fullSizeInterval.dimension(0) - 1,
+//									bw.fullSizeInterval.dimension(1) - 1,
+//									Math.round(maxMean.get()) + bw.flattenPadding});
 
 						// Now regenerate the Source with the new transform and crop interval
-						final Source<?>[] fAndO = makeFlatAndOriginalSource(bw.rawMipmaps, bw.scales, bw.voxelDimensions, bw.name, cropInterval, bw.useVolatile, ft, bw.queue);
-						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
-																			  new Source[]{fAndO[1]},
-																			  new String[]{"Flat", "Original"});
-						// FIXME BigWarpData probably doesnt have to be recreated, note that the if( index ... )clauses below *OVERWRITE* the Source transform
-						bw.data = bwData;
+//						final Source<?>[] fAndO = makeFlatAndOriginalSource(bw.rawMipmaps, bw.scales, bw.voxelDimensions, bw.name, cropInterval, bw.useVolatile, ft, bw.queue);
+//						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
+//																			  new Source[]{fAndO[1]},
+//																			  new String[]{"Flat", "Original"});
+//						// FIXME BigWarpData probably doesnt have to be recreated, note that the if( index ... )clauses below *OVERWRITE* the Source transform
+//						bw.data = bwData;
 
 						if ( ft == null )
 							return;
@@ -3562,7 +3559,7 @@ public class BigWarp< T >
 						{
 						    // FIXME this needs to be reconciled with the recreation of bigwarpdata within this solve thread
 							// update the transform and warped point
-							//bw.setTransformationMovingSourceOnly(ft.inverse());
+							bw.setTransformationMovingSourceOnly(ft.inverse());
 						}
 
 						// update fixed point - but don't allow undo/redo
@@ -3580,7 +3577,7 @@ public class BigWarp< T >
 						bw.getViewerFrameQ().getViewerPanel().requestRepaint();
 					}
 
-					catch ( final RejectedExecutionException | IOException e )
+					catch ( final RejectedExecutionException e )
 					{
 						// this happens when the rendering threadpool
 						// is killed before the painter thread.
