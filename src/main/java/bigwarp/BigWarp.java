@@ -3436,12 +3436,14 @@ public class BigWarp< T >
 							if (regionMin[2] > (float) (dimensions[2]) / 2.0 && regionMax[2] > (float) (dimensions[2]) / 2.0) {
 								// Max heightmap
 								heightmap = bw.maxHeightmap;
-								offset = dimensions[2] / 2;
+								// TODO if costRegion is subsampled, then check that this offset is correct it works with the true interval
+                                offset = costRegion.max(2);
 								System.out.println("Updating max heightmap");
 							} else {
 								// Min heightmap
 								heightmap = bw.minHeightmap;
-								offset = 0;
+								// TODO if costRegion is subsampled, then check that this offset is correct it works with the true interval
+                                offset = costRegion.min(2);
 								System.out.println("Updating min heightmap");
 							}
 
@@ -3461,8 +3463,7 @@ public class BigWarp< T >
 							long startTime = System.nanoTime();
 
 							// Run the actual graphcut to generate this patch of heightmap, we need to zeroMin because of upstream methods
-							// TODO if costRegion is subsampled, then check that this offset is correct it works with the true interval
-                            offset = costRegion.min(2);
+
                             System.out.println("Patch offset: " + offset);
 
                             // TODO if costRegion is subsampled, then check that these dimensions are correct, they should correspond to the costRegion's true interval
