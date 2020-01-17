@@ -817,8 +817,6 @@ public class LandmarkTableModel extends AbstractTableModel implements TransformL
 			double[] warpedPt = new double[ ndims ];
 			xfm.applyInverse( warpedPt, tgt );
 
-			System.out.println("computeWarpedPoint: " + Arrays.toString(warpedPt));
-
 			if( xfm instanceof WrappedIterativeInvertibleRealTransform )
 			{
 				WrappedIterativeInvertibleRealTransform<?> inv = (WrappedIterativeInvertibleRealTransform<?>)xfm;

@@ -3533,9 +3533,6 @@ public class BigWarp< T >
 						double[] tpt = new double[]{6012, 7252, 3711};
 						double[] outpt = new double[3];
 
-						ft.apply(tpt, outpt);
-						System.out.println(Arrays.toString(outpt));
-
 						// Now regenerate the Source with the new transform and crop interval
 						final Source<?>[] fAndO = makeFlatAndOriginalSource(bw.rawMipmaps, bw.scales, bw.voxelDimensions, bw.name, cropInterval, bw.useVolatile, ft, bw.queue);
 						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
