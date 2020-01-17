@@ -784,7 +784,7 @@ public class LandmarkTableModel extends AbstractTableModel implements TransformL
 	public void updateAllWarpedPoints( final InvertibleRealTransform xfm )
 	{
 		for ( int i = 0; i < numRows; i++ )
-			if ( !isFixedPoint( i ) && isMovingPoint( i ) )
+			if ( isMovingPoint( i ) )
 				computeWarpedPoint( i, xfm );
 	}
 
@@ -810,12 +810,14 @@ public class LandmarkTableModel extends AbstractTableModel implements TransformL
 		// TODO pass a transform here as argument - don't use estimatedXfm stored here
 
 		// TODO Perhaps move this into its own thread. and expose the parameters for solving the inverse.
-		if ( !isFixedPoint( i ) && isMovingPoint( i ) && xfm != null )
+		if ( isMovingPoint( i ) && xfm != null )
 		{
 			double[] tgt = toPrimitive( movingPts.get( i ) );
 
 			double[] warpedPt = new double[ ndims ];
 			xfm.applyInverse( warpedPt, tgt );
+
+			System.out.println("computeWarpedPoint: " + Arrays.toString(warpedPt));
 
 			if( xfm instanceof WrappedIterativeInvertibleRealTransform )
 			{

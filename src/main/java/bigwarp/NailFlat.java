@@ -105,8 +105,9 @@ public class NailFlat implements Callable<Void> {
 					"-d", "/zcorr/Sec22___20200106_083252",
 					"-f", "/flatten/Sec22___20200113_kyle002",
 					"-s", "/cost/Sec22___20200110_160724",
-					"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-bottom.h5",
-					"--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-top.h5"
+					"-u"
+//					"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-bottom.h5",
+//					"--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-top.h5"
 					};
 			//args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "/cost/Sec23___20200110_152920", "-u"};
 		// to regenerate heightmap from HDF5 use these args

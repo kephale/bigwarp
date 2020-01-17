@@ -3530,6 +3530,12 @@ public class BigWarp< T >
 									bw.fullSizeInterval.dimension(1) - 1,
 									Math.round(maxMean.get()) + bw.flattenPadding});
 
+						double[] tpt = new double[]{6012, 7252, 3711};
+						double[] outpt = new double[3];
+
+						ft.apply(tpt, outpt);
+						System.out.println(Arrays.toString(outpt));
+
 						// Now regenerate the Source with the new transform and crop interval
 						final Source<?>[] fAndO = makeFlatAndOriginalSource(bw.rawMipmaps, bw.scales, bw.voxelDimensions, bw.name, cropInterval, bw.useVolatile, ft, bw.queue);
 						BigWarpData<?> bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
@@ -3548,7 +3554,7 @@ public class BigWarp< T >
 							bw.landmarkModel.resetWarpedPoints();
 
 							// re-compute all warped points for non-active points
-							bw.landmarkModel.updateAllWarpedPoints( bw.currentTransform );
+							bw.landmarkModel.updateAllWarpedPoints( bw.currentTransform.inverse() );
 
 							// update sources with the new transformation
 							bw.setTransformationAll(ft.inverse());
@@ -3558,7 +3564,7 @@ public class BigWarp< T >
 						{
 						    // FIXME this needs to be reconciled with the recreation of bigwarpdata within this solve thread
 							// update the transform and warped point
-							bw.setTransformationMovingSourceOnly(ft.inverse());
+							//bw.setTransformationMovingSourceOnly(ft.inverse());
 						}
 
 						// update fixed point - but don't allow undo/redo
