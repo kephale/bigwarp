@@ -17,30 +17,33 @@
 package bigwarp;
 
 import bdv.ij.util.ProgressWriterIJ;
-import bdv.util.BdvOptions;
-import bdv.util.BdvStackSource;
-import bdv.util.RandomAccessibleIntervalMipmapSource;
+import bdv.util.*;
 import bdv.util.volatiles.SharedQueue;
 import bdv.viewer.Source;
+import bdv.viewer.SourceAndConverter;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import mpicbg.spim.data.SpimDataException;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
 import net.imglib2.FinalInterval;
+import net.imglib2.Interval;
 import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.converter.Converters;
+import net.imglib2.display.RealARGBColorConverter;
 import net.imglib2.img.Img;
 import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.realtransform.*;
+import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.util.Intervals;
+import net.imglib2.view.IntervalView;
 import net.imglib2.view.SubsampleIntervalView;
 import net.imglib2.view.Views;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
@@ -61,6 +64,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
 import static bigwarp.BigWarp.makeFlatAndOriginalSource;
+import static bigwarp.BigWarp.zRange;
 import static bigwarp.SemaUtils.copyRealInto;
 import static bigwarp.SemaUtils.flipCost;
 import static net.preibisch.surface.SurfaceFitCommand.*;
@@ -219,12 +223,59 @@ public class NailFlat implements Callable<Void> {
             new long[] {0, 0, 0},
             new long[] {dimensions[0] - 1, dimensions[2] - 1, dimensions[1] -1});// FIXME double check this dimension swap, it came from saalfeld's hot-knife ViewFlattened
 
+		DoubleType minMean = SemaUtils.getAvgValue(min);
+		DoubleType maxMean = SemaUtils.getAvgValue(max);
+
+		/* range/heightmap visualization */
+		final IntervalView<DoubleType> zRange = Views.interval(
+				zRange(minMean.get(), maxMean.get(), 255, 1),
+				new long[]{0, 0, Math.round(minMean.get()) - padding},
+				new long[]{rawMipmaps[0].dimension(0), rawMipmaps[0].dimension(2), Math.round(maxMean.get()) + padding});
+
+		final Interval zCropInterval = zRange;
+
+		double transformScaleX = 1;
+		double transformScaleY = 1;
+		final Scale2D transformScale = new Scale2D(transformScaleX, transformScaleY);
+		final FlattenTransform ft = new FlattenTransform(
+								RealViews.affine(
+										Views.interpolate(
+												Views.extendBorder(min),
+												new NLinearInterpolatorFactory<>()),
+										transformScale),
+								RealViews.affine(
+										Views.interpolate(
+												Views.extendBorder(max),
+												new NLinearInterpolatorFactory<>()),
+										transformScale),
+								minMean.get(),
+								maxMean.get());
+
+		final RandomAccessibleInterval<DoubleType> heightmapRai =
+				Transform.createTransformedInterval(
+						zRange,
+						zCropInterval,
+						ft,
+						new DoubleType(0));
+
+		RandomAccessibleIntervalSource heightmapOverlay = new RandomAccessibleIntervalSource(heightmapRai, new DoubleType(), "heightmap");
+
+//		bdv = BdvFunctions.show(Views.permute(heightmapOverlay, 1, 2), "", BdvOptions.options().addTo(bdv));
+//		//bdv = BdvFunctions.show(transformedSource, "", BdvOptions.options().addTo(bdv));
+//		bdv.setDisplayRangeBounds(0, 255);
+//		bdv.setDisplayRange(0, 255);
+//		bdv.setColor(new ARGBType(0xff00ff00));
 
 		// Make the Sources that we will use in BigWarp
 		final Source<?>[] fAndO = makeFlatAndOriginalSource(rawMipmaps, scales, voxelDimensions, inputDataset, sourceInterval, useVolatile, null, queue);
+
+//		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
+//                                                                   new Source[]{heightmapOverlay},
+//                                                                   new String[]{"Flat", "heightmapOverlay"});
+
 		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
-                                                                   new Source[]{fAndO[1]},
-                                                                   new String[]{"Flat", "Original"});
+                                                                   new Source[]{fAndO[1], heightmapOverlay},
+                                                                   new String[]{"Flat", "Original", "heightmapOverlay"});
 
 		System.out.println("Source dimensions: " +
 				fAndO[1].getSource(0,0).dimension(0) + " " +
@@ -235,6 +286,9 @@ public class NailFlat implements Callable<Void> {
 
 		@SuppressWarnings( "unchecked" )
 		BigWarp bw = new BigWarp( bwData, n5.getBasePath(), progress );
+
+		// Adjust the contrast for the overlay
+		bw.getSetupAssignments().getConverterSetups().get( 2 ).setDisplayRange( 0, 255 );
 
 		// Load in a bunch of global-ish variables to BigWarp
 		bw.setImagej(imagej);
@@ -252,6 +306,8 @@ public class NailFlat implements Callable<Void> {
 		bw.setN5Path(n5Path);
 		bw.setFlattenSubContainer(flattenDataset);
 		bw.setCost(cost);
+
+		//bw.setUpdateWarpOnChange(false);
 
 		// Load nails from N5
 		//System.out.println(bw.getTransformation());

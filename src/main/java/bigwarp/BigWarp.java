@@ -35,8 +35,7 @@ import javax.swing.event.TableModelListener;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellEditor;
 
-import bdv.util.BdvStackSource;
-import bdv.util.RandomAccessibleIntervalMipmapSource;
+import bdv.util.*;
 import bdv.util.volatiles.SharedQueue;
 import mpicbg.spim.data.SpimData;
 import mpicbg.spim.data.XmlIoSpimData;
@@ -55,6 +54,7 @@ import net.imglib2.img.basictypeaccess.array.DoubleArray;
 import net.imglib2.img.cell.Cell;
 import net.imglib2.img.cell.CellRandomAccess;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
+import net.imglib2.position.FunctionRandomAccessible;
 import net.imglib2.realtransform.*;
 import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.IntType;
@@ -331,11 +331,11 @@ public class BigWarp< T >
 
 	private static double nailPenalty = Double.MAX_VALUE;
     //private static double nailPenalty = 1000;
-	private static int costStep = 1;
+	private static int costStep = 6;
 
 	private long flattenPadding = 2000;
-	//private long nailPadding = 200;
-	private long nailPadding = 20;
+	private long nailPadding = 60;
+	//private long nailPadding = 20;
 	private net.imagej.ImageJ imagej;
     
     private RandomAccessibleInterval<DoubleType> sourceCostImg;
@@ -3526,6 +3526,7 @@ public class BigWarp< T >
 						//bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement
 
                         System.out.println("Current transform has been updated");
+                        //bw.displayOverlays();
 
 //						final FinalInterval cropInterval = new FinalInterval(
 //						new long[] {0, 0, Math.round(minMean.get()) - bw.flattenPadding},
@@ -4109,6 +4110,25 @@ public class BigWarp< T >
 	public void setQueue(SharedQueue queue) {
 		this.queue = queue;
 	}
+
+	// From hotknife
+	public static final FunctionRandomAccessible<DoubleType> zRange(
+			final double min,
+			final double max,
+			final double scale,
+			final double stretch) {
+
+		return new FunctionRandomAccessible<>(
+				3,
+				(location, value) -> {
+					final double z = location.getDoublePosition(2);
+					value.set(
+							scale / (stretch * Math.abs(z - min) + 1) +
+							scale / (stretch * Math.abs(z - max) + 1));
+				},
+				DoubleType::new);
+	}
+
 
 	public static void main( final String[] args ) throws IOException, SpimDataException {
 
