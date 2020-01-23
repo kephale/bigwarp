@@ -3400,8 +3400,6 @@ public class BigWarp< T >
 							long[] regionMax = new long[]{0, 0, 0};
 							for (int k = 0; k < nails.size(); k++) {
 
-								// nailToGrid might need to take step and offset, because the region to be nailed might be arbitrary
-								//long[] nail = nailToGrid(nails.get(k));
 								long[] nail = new long[]{nails.get(k)[0].longValue(), nails.get(k)[1].longValue(), nails.get(k)[2].longValue()};
 
 								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
@@ -3413,8 +3411,8 @@ public class BigWarp< T >
 							}
 
 							// Snap region min/max to cost grid
-							regionMin[2] = (long) (Math.floor((double) regionMin[2] / costStep) * costStep);
-							regionMax[2] = (long) (Math.ceil((double) regionMax[2] / costStep) * costStep);
+							regionMin[1] = (long) (Math.floor((double) regionMin[1] / costStep) * costStep);
+							regionMax[1] = (long) (Math.ceil((double) regionMax[1] / costStep) * costStep);
 
 							System.out.println("Nail region is: ");
 							System.out.println("Min: " + regionMin[0] + " " + regionMin[1] + " " + regionMin[2]);
@@ -3423,8 +3421,13 @@ public class BigWarp< T >
 							// Fetch the known cost data
 							IntervalView<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
 
+							// Get the offset of the cost region
+							long[] costMin = new long[3];
+							costRegion.min(costMin);
+
 							// sampledCost will be used for nail placement, nail borders, and solving the graphcut
-							RandomAccessibleInterval<DoubleType> sampledCost = Views.subsample(costRegion, 1, 1, costStep);
+							RandomAccessibleInterval<DoubleType> sampledCost = Views.translate(Views.subsample(costRegion, 1, costStep, 1), costMin);
+							// Now sampledCost is downscaled along Y, but has the correct origin
 
 							// Create a new RAI and copy the cost region
 							Img<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) sampledCost);
@@ -3451,7 +3454,7 @@ public class BigWarp< T >
 								System.out.println("Updating min heightmap");
 							}
 
-							// Nail along the border (performed in sampled coords)
+							// Nail along the border (performed in sampled coords, but with correct origin/min)
 							bw.nailRegionBorder(sampledCost, heightmap);
 							System.out.println("Region border has been nailed");
 
@@ -3461,7 +3464,7 @@ public class BigWarp< T >
 								// Note, the nail will be snapped to grid during applyNail
 
 								// This method changes the contents of costRegion based on the nail. If we want to apply multiple nails in a region, this is the place to do it
-								// This is performed in sampled coords
+								// This is performed in sampled coords, but with correct origin/min
 								BigWarp.applyNail(sampledCost, nail);
 							}
 							System.out.println("All nails have been applied. Now solving graphcut...");
@@ -3625,7 +3628,7 @@ public class BigWarp< T >
     private RandomAccessibleInterval<DoubleType> nailRegionBorder(RandomAccessibleInterval<DoubleType> costRegion, RandomAccessibleInterval<DoubleType> heightmap) {
 	    // Nail periphery to the heightmap along X
         long[] crPos = new long[3];// for costRegion
-        long[] hmPos = new long[3];// for heightmap
+        long[] hmPos = new long[2];// for heightmap
         RandomAccess<DoubleType> crAccess = costRegion.randomAccess();
         RandomAccess<DoubleType> hmAccess = heightmap.randomAccess();
 
@@ -3633,7 +3636,7 @@ public class BigWarp< T >
         for( long x = costRegion.min(0); x < costRegion.max(0); x++ ) {
             crPos[0] = x;
             hmPos[0] = x;
-            for( long z = costRegion.min(2); z < costRegion.max(2); z+=costStep ) {
+            for( long z = costRegion.min(2); z < costRegion.max(2); z++ ) {
                 crPos[2] = z;
 
                 // Apply along min Y boundary
@@ -3663,10 +3666,10 @@ public class BigWarp< T >
         }
 
         // Nail along Y border (at min/max X of interval)
-        for( long y = costRegion.min(1); y < costRegion.max(1); y++ ) {
+        for( long y = costRegion.min(1); y < costRegion.max(1); y+= costStep ) {
             crPos[1] = y;
             hmPos[1] = y;
-            for( long z = costRegion.min(2); z < costRegion.max(2); z+=costStep ) {
+            for( long z = costRegion.min(2); z < costRegion.max(2); z++ ) {
                 crPos[2] = z;
 
                 // Apply along min X boundary
@@ -3799,7 +3802,7 @@ public class BigWarp< T >
 	private static long[] nailToGrid(Double[] inNail) {
         //long[] outNail = new long[]{Math.round(inNail[0]), Math.round(inNail[2]), Math.round(inNail[1])};// FIXME this code currently swaps nail axes
 
-        long[] outNail = new long[]{Math.round(inNail[0]), Math.round(inNail[1]), Math.round(inNail[2] / costStep)};
+        long[] outNail = new long[]{Math.round(inNail[0]), Math.round(inNail[1] / costStep), Math.round(inNail[2])};
 
         return outNail;
     }
@@ -3813,11 +3816,11 @@ public class BigWarp< T >
 
         long zStart, zStop;
         if( gridNail[2] < costImg.dimension(2) / 2 ) {
-        	zStart = 0;
-        	zStop = costImg.dimension(2) / 2;
+        	zStart = costImg.min(2);
+        	zStop = costImg.min(2) + costImg.dimension(2) / 2;
 		} else {
-        	zStart = costImg.dimension(2) / 2;
-        	zStop = costImg.dimension(2);
+        	zStart = costImg.min(2) + costImg.dimension(2) / 2;
+        	zStop = costImg.max(2);
 		}
 
         // Loop over Z-coordinates and place nail + nail penalties
