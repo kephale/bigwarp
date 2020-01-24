@@ -2297,7 +2297,17 @@ public class BigWarp< T >
 	    this.flattenDataset = flattenDataset;
     }
 
-    public enum WarpVisType
+	public RandomAccessibleInterval<DoubleType> getCorrespondingHeightmap(Double z) {
+		long offset;
+		if (z > (float) (rawMipmaps[0].dimension(2)) / 2.0 && z > (float) (rawMipmaps[0].dimension(2)) / 2.0) {
+			// Max heightmap
+			return maxHeightmap;
+		} else {
+			return minHeightmap;
+		}
+	}
+
+	public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
 	};
@@ -2918,7 +2928,7 @@ public class BigWarp< T >
 			    return;
             }
 
-			System.out.println("Add fixed point in moving " + isMovingImage + " transform enabled " + viewerP.getTransformEnabled() );
+			//System.out.println("Add fixed point in moving " + isMovingImage + " transform enabled " + viewerP.getTransformEnabled() );
 
 			// FIXME This method has been overridden NOTE getTransformEnabled does not behave as expected this clause seems to be useless
 			if ( isMovingImage && viewerP.getTransformEnabled() )
@@ -2945,6 +2955,9 @@ public class BigWarp< T >
             {
 				currentLandmark.localize( ptarrayLoc );
 
+				ptarrayLoc[0] = Math.round( ptarrayLoc[0] / costStep ) * costStep;
+				ptarrayLoc[1] = Math.round( ptarrayLoc[1] / costStep ) * costStep;
+
 				BigWarp.this.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
 				//BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);// TODO this was the previous
 				addPoint( ptBackLoc, true, viewerP );
@@ -2956,8 +2969,8 @@ public class BigWarp< T >
 			}
 
 
-			if ( updateWarpOnPtChange )
-				BigWarp.this.restimateTransformation();
+//			if ( updateWarpOnPtChange )
+//				BigWarp.this.restimateTransformation();
 
 //			if ( isMovingImage && viewerP.getTransformEnabled() )
 //			{
@@ -4114,6 +4127,8 @@ public class BigWarp< T >
 	public void setQueue(SharedQueue queue) {
 		this.queue = queue;
 	}
+
+	public int getCostStep() { return costStep; }
 
 	// From hotknife
 	public static final FunctionRandomAccessible<DoubleType> zRange(

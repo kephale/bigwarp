@@ -11,6 +11,10 @@ import javax.swing.JTable;
 import javax.swing.KeyStroke;
 import javax.swing.table.TableCellEditor;
 
+import net.imglib2.RandomAccess;
+import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.RealPoint;
+import net.imglib2.type.numeric.real.DoubleType;
 import org.scijava.ui.behaviour.KeyStrokeAdder;
 import org.scijava.ui.behaviour.util.AbstractNamedAction;
 import org.scijava.ui.behaviour.util.InputActionBindings;
@@ -85,6 +89,10 @@ public class BigWarpActions
 	public static final String DEBUG = "debug";
 	public static final String GARBAGE_COLLECTION = "garbage collection";
 
+	public static final String APPLY_FLATTEN = "apply flatten";
+	public static final String EXPORT_FLATTEN = "export flatten";
+	public static final String GENERATE_NAILS = "generate nails";
+
 	/**
 	 * Create BigWarp actions and install them in the specified
 	 * {@link InputActionBindings}.
@@ -156,6 +164,10 @@ public class BigWarpActions
 		map.put( GO_TO_BOOKMARK_ROTATION, "O" );
 		map.put( SET_BOOKMARK, "shift B" );
 
+		map.put( APPLY_FLATTEN, "F" );
+		map.put( EXPORT_FLATTEN, "ctrl F" );
+		map.put( GENERATE_NAILS, "ctrl N" );
+
 		return inputMap;
 	}
 
@@ -191,6 +203,10 @@ public class BigWarpActions
 
 		new SaveSettingsAction( bw ).put( actionMap );
 		new LoadSettingsAction( bw ).put( actionMap );
+
+		new ApplyFlattenAction( bw ).put( actionMap );
+		new ExportFlattenAction( bw ).put( actionMap );
+		new GenerateNailsAction( bw ).put( actionMap );
 
 		return actionMap;
 	}
@@ -315,6 +331,9 @@ public class BigWarpActions
 		new DebugAction( DEBUG, bw ).put( actionMap );
 		new PrintTransformAction( PRINT_TRANSFORM, bw ).put( actionMap );
 
+		new ApplyFlattenAction( bw ).put( actionMap );
+		new ExportFlattenAction( bw ).put( actionMap );
+		new GenerateNailsAction( bw ).put( actionMap );
 			
 		return actionMap;
 	}
@@ -641,19 +660,19 @@ public class BigWarpActions
 	public static class AlignViewerPanelAction extends AbstractNamedAction
 	{
 		private static final long serialVersionUID = -7023242695323421450L;
-		
+
 		public enum TYPE { ACTIVE_TO_OTHER, OTHER_TO_ACTIVE };
-		
+
 		private BigWarp bw;
 		private TYPE type;
-		
+
 		public AlignViewerPanelAction( final BigWarp bw, TYPE type )
 		{
 			super( String.format( ALIGN_VIEW_TRANSFORMS, type ) );
 			this.bw = bw;
 			this.type = type;
 		}
-		
+
 		public void actionPerformed( ActionEvent e )
 		{
 			if( type == TYPE.ACTIVE_TO_OTHER )
@@ -1063,7 +1082,7 @@ public class BigWarpActions
 
 	public static class SaveFlattenAction extends AbstractNamedAction
 	{
-		private static final long serialVersionUID = 4965249994677649713L;
+//		private static final long serialVersionUID = 4965249994677649713L;
 
 		BigWarp bw;
 		public SaveFlattenAction( final BigWarp bw )
@@ -1096,6 +1115,91 @@ public class BigWarpActions
 		public void actionPerformed(ActionEvent e)
 		{
 			bw.saveMovingImageXml();
+		}
+	}
+
+	public static class ApplyFlattenAction extends AbstractNamedAction
+	{
+//		private static final long serialVersionUID = 4965249994677649713L;
+
+		BigWarp bw;
+		public ApplyFlattenAction( final BigWarp bw )
+		{
+			super( APPLY_FLATTEN );
+			this.bw = bw;
+		}
+		@Override
+		public void actionPerformed(ActionEvent e)
+		{
+			System.out.println("Solving and applying flatten transform");
+			bw.restimateTransformation();
+		}
+	}
+
+	public static class ExportFlattenAction extends AbstractNamedAction
+	{
+//		private static final long serialVersionUID = 4965249994677649713L;
+
+		BigWarp bw;
+		public ExportFlattenAction( final BigWarp bw )
+		{
+			super( EXPORT_FLATTEN );
+			this.bw = bw;
+		}
+		@Override
+		public void actionPerformed(ActionEvent e)
+		{
+			try {
+				bw.saveFlatten();
+			} catch (IOException ex) {
+				ex.printStackTrace();
+			}
+		}
+	}
+
+	public static class GenerateNailsAction extends AbstractNamedAction
+	{
+//		private static final long serialVersionUID = 4965249994677649713L;
+
+		BigWarp bw;
+		public GenerateNailsAction( final BigWarp bw )
+		{
+			super( GENERATE_NAILS );
+			this.bw = bw;
+		}
+		@Override
+		public void actionPerformed(ActionEvent e)
+		{
+			int activeRow = bw.landmarkModel.getActiveRowCount();
+			Double[] pt = bw.landmarkModel.getPoint(false, activeRow-1);
+
+			System.out.println("Generating nail grid");
+
+			RandomAccessibleInterval<DoubleType> heightmap = bw.getCorrespondingHeightmap(pt[2]);
+			RandomAccess<DoubleType> hmAccess = heightmap.randomAccess();
+			long[] pos = new long[2];
+
+			int gridRadius = bw.getCostStep() * 10;
+			for(double x = pt[0] - gridRadius; x < pt[0] + gridRadius; x+=bw.getCostStep()) {
+				pos[0] = (long) x;
+				for(double y = pt[1] - gridRadius; y < pt[1] + gridRadius; y+=bw.getCostStep()) {
+					pos[1] = (long) y;
+					hmAccess.setPosition(pos);
+					double[] ptarrayLoc = new double[]{x, y, hmAccess.get().get()};
+					double[] ptBackLoc = new double[3];
+
+					bw.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
+					//BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);// TODO this was the previous
+					bw.addPoint( ptBackLoc, true, bw.viewerP );
+
+					// can use this to sanity check, but the P points need to be stored in transformed coords
+					//addPoint( ptarrayLoc, true, viewerP );
+
+					bw.addPoint( ptarrayLoc, false, bw.viewerQ );
+
+				}
+			}
+
 		}
 	}
 

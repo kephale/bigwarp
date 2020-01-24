@@ -314,7 +314,7 @@ public class NailFlat implements Callable<Void> {
 		//bw.setCost(cost);
 		bw.setCost(costMipmaps[0]);
 
-		//bw.setUpdateWarpOnChange(false);
+		bw.setUpdateWarpOnChange(false);
 
 		// Load nails from N5
 		//System.out.println(bw.getTransformation());
