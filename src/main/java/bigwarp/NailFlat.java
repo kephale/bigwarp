@@ -20,25 +20,18 @@ import bdv.ij.util.ProgressWriterIJ;
 import bdv.util.*;
 import bdv.util.volatiles.SharedQueue;
 import bdv.viewer.Source;
-import bdv.viewer.SourceAndConverter;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
+import ij.ImageJ;
 import mpicbg.spim.data.SpimDataException;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
 import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
-import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessibleInterval;
-import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.converter.Converters;
-import net.imglib2.display.RealARGBColorConverter;
-import net.imglib2.img.Img;
-import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.realtransform.*;
 import net.imglib2.type.numeric.ARGBType;
-import net.imglib2.type.numeric.RealType;
-import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
@@ -59,15 +52,10 @@ import picocli.CommandLine.Option;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 
 import static bigwarp.BigWarp.makeFlatAndOriginalSource;
 import static bigwarp.BigWarp.zRange;
-import static bigwarp.SemaUtils.copyRealInto;
-import static bigwarp.SemaUtils.flipCost;
-import static net.preibisch.surface.SurfaceFitCommand.*;
 
 /**
  *
@@ -179,7 +167,10 @@ public class NailFlat implements Callable<Void> {
 		@SuppressWarnings("unchecked")
 		final RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = new RandomAccessibleInterval[numScales];
 
-		RandomAccessibleInterval<UnsignedByteType> cost = N5Utils.openVolatile(n5, costDataset + "/s0");
+		//RandomAccessibleInterval<UnsignedByteType> cost = N5Utils.openVolatile(n5, costDataset + "/s0");
+
+		@SuppressWarnings("unchecked")
+		final RandomAccessibleInterval<UnsignedByteType>[] costMipmaps = new RandomAccessibleInterval[numScales];
 
 		final double[][] scales = new double[numScales][];
 
@@ -201,6 +192,11 @@ public class NailFlat implements Callable<Void> {
 					N5Utils.openVolatile(
 							n5,
 							scaleDataset);
+
+			costMipmaps[s] =
+					N5Utils.openVolatile(
+							n5,
+							costDataset + "/s" + s);
 
 			scales[s] = new double[]{scale, scale, scale};
 		}
@@ -258,6 +254,7 @@ public class NailFlat implements Callable<Void> {
 						ft,
 						new DoubleType(0));
 
+		//RandomAccessibleIntervalSource heightmapOverlay = new RandomAccessibleIntervalSource(Views.permute(heightmapRai, 1, 2), new DoubleType(), "heightmap");
 		RandomAccessibleIntervalSource heightmapOverlay = new RandomAccessibleIntervalSource(heightmapRai, new DoubleType(), "heightmap");
 
 //		bdv = BdvFunctions.show(Views.permute(heightmapOverlay, 1, 2), "", BdvOptions.options().addTo(bdv));
@@ -272,6 +269,10 @@ public class NailFlat implements Callable<Void> {
 //		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
 //                                                                   new Source[]{heightmapOverlay},
 //                                                                   new String[]{"Flat", "heightmapOverlay"});
+
+		new ImageJ();// FIXME debugging
+
+		Source<?> costSource = makeCostSource(costMipmaps, scales, voxelDimensions, inputDataset, sourceInterval, useVolatile, null, queue);
 
 		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
                                                                    new Source[]{fAndO[1], heightmapOverlay},
@@ -289,6 +290,10 @@ public class NailFlat implements Callable<Void> {
 
 		// Adjust the contrast for the overlay
 		bw.getSetupAssignments().getConverterSetups().get( 2 ).setDisplayRange( 0, 255 );
+		bw.getSetupAssignments().getConverterSetups().get( 2 ).setColor(new ARGBType(0x00ff0000));
+//		bw.getSetupAssignments().getConverterSetups().get( 3 ).setDisplayRange( 0, 1000 );
+//		bw.getSetupAssignments().getConverterSetups().get( 3 ).setColor(new ARGBType(0xff00ff00));
+
 
 		// Load in a bunch of global-ish variables to BigWarp
 		bw.setImagej(imagej);
@@ -305,7 +310,9 @@ public class NailFlat implements Callable<Void> {
 		bw.setUseVolatile(useVolatile);
 		bw.setN5Path(n5Path);
 		bw.setFlattenSubContainer(flattenDataset);
-		bw.setCost(cost);
+
+		//bw.setCost(cost);
+		bw.setCost(costMipmaps[0]);
 
 		//bw.setUpdateWarpOnChange(false);
 
@@ -319,7 +326,65 @@ public class NailFlat implements Callable<Void> {
 		return null;
 	}
 
+	private Source<?> makeCostSource(RandomAccessibleInterval<UnsignedByteType>[] costMipmaps, double[][] scales, FinalVoxelDimensions voxelDimensions, String inputDataset, FinalInterval cropInterval, boolean useVolatile, FlattenTransform ft, SharedQueue queue) throws IOException {
+		@SuppressWarnings("unchecked")
+		final RandomAccessibleInterval<UnsignedByteType>[] mipmaps = new RandomAccessibleInterval[scales.length];
 
+		for (int s = 0; s < scales.length; ++s) {
+
+			final int scale = (int) scales[s][0];
+			final double inverseScale = 1.0 / scale;
+
+			final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
+			final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
+			final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
+			transformSequenceFlat.add(shift);
+			if( ft != null )
+				transformSequenceFlat.add(ft.inverse());
+			transformSequenceFlat.add(shift.inverse());
+			transformSequenceFlat.add(scale3D);
+
+			final RandomAccessibleInterval<UnsignedByteType> originalSource =
+					Transform.createTransformedInterval(
+							//Views.permute(costMipmaps[s], 1, 2),
+							costMipmaps[s],
+							cropInterval,
+							scale3D,
+							new UnsignedByteType(0));
+
+			final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
+			final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
+
+			if( useVolatile ) {
+				mipmaps[s] = cachedOriginalSource;
+			} else {
+				mipmaps[s] = subsampledOriginalSource;
+			}
+			scales[s] = new double[]{scale, scale, scale};
+		}
+
+		/*
+		 * update when transforms change
+		 */
+
+		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceOriginal =
+				new RandomAccessibleIntervalMipmapSource<>(
+						mipmaps,
+						new UnsignedByteType(),
+						scales,
+						voxelDimensions,
+						inputDataset);
+
+		final Source<?> volatileMipmapSourceFlat;
+		final Source<?> volatileMipmapSourceOriginal;
+		if ( useVolatile ) {
+			volatileMipmapSourceOriginal = mipmapSourceOriginal.asVolatile(queue);
+		} else {
+			volatileMipmapSourceOriginal = mipmapSourceOriginal;
+		}
+
+		return volatileMipmapSourceOriginal;
+	}
 
 
 }

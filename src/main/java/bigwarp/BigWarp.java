@@ -53,6 +53,7 @@ import net.imglib2.img.array.ArrayRandomAccess;
 import net.imglib2.img.basictypeaccess.array.DoubleArray;
 import net.imglib2.img.cell.Cell;
 import net.imglib2.img.cell.CellRandomAccess;
+import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.position.FunctionRandomAccessible;
 import net.imglib2.realtransform.*;
@@ -69,7 +70,6 @@ import org.apache.log4j.Logger;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
 import org.janelia.saalfeldlab.hotknife.util.Show;
 import org.janelia.saalfeldlab.hotknife.util.Transform;
-import org.janelia.saalfeldlab.n5.GzipCompression;
 import org.janelia.saalfeldlab.n5.N5FSReader;
 import org.janelia.saalfeldlab.n5.N5FSWriter;
 import org.janelia.saalfeldlab.n5.RawCompression;
@@ -169,7 +169,6 @@ import net.imglib2.ui.TransformEventHandler;
 import net.imglib2.ui.TransformListener;
 import net.imglib2.view.Views;
 
-import static bigwarp.SemaUtils.getAvgValue;
 import static net.preibisch.surface.SurfaceFitCommand.*;
 
 public class BigWarp< T >
@@ -3383,7 +3382,7 @@ public class BigWarp< T >
 						
 						// The code below is written expecting that costImg is lazy, otherwise it might run out of memory on full scale data
 						RandomAccessibleInterval<DoubleType> costImg = Views.permute(bw.getCostImg(), 1, 2);
-						
+
 						long[] dimensions = new long[3];
 						costImg.dimensions(dimensions);
                         //bw.rawMipmaps[0].dimensions(dimensions);
@@ -3414,7 +3413,7 @@ public class BigWarp< T >
 							regionMin[1] = (long) (Math.floor((double) regionMin[1] / costStep) * costStep);
 							regionMax[1] = (long) (Math.ceil((double) regionMax[1] / costStep) * costStep);
 
-							System.out.println("Nail region is: ");
+							System.out.println("Nail region is (snapped to cost step grid for y): ");
 							System.out.println("Min: " + regionMin[0] + " " + regionMin[1] + " " + regionMin[2]);
 							System.out.println("Max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
@@ -3430,7 +3429,7 @@ public class BigWarp< T >
 							// Now sampledCost is downscaled along Y, but has the correct origin
 
 							// Create a new RAI and copy the cost region
-							Img<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) sampledCost);
+							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) sampledCost);
 							net.imglib2.Cursor<DoubleType> nrCursor = Views.flatIterable(nailRegion).cursor();
 							net.imglib2.Cursor<DoubleType> sourceCursor = Views.flatIterable(sampledCost).cursor();
 							while (sourceCursor.hasNext()) {
@@ -3445,7 +3444,8 @@ public class BigWarp< T >
 							if (regionMin[2] > (float) (dimensions[2]) / 2.0 && regionMax[2] > (float) (dimensions[2]) / 2.0) {
 								// Max heightmap
 								heightmap = bw.maxHeightmap;
-                                offset = costRegion.max(2);
+								// TODO continue to debug offset issue
+                                offset = costRegion.min(2);
 								System.out.println("Updating max heightmap");
 							} else {
 								// Min heightmap
@@ -3455,7 +3455,7 @@ public class BigWarp< T >
 							}
 
 							// Nail along the border (performed in sampled coords, but with correct origin/min)
-							bw.nailRegionBorder(sampledCost, heightmap);
+							bw.nailRegionBorder(nailRegion, heightmap);
 							System.out.println("Region border has been nailed");
 
 							// Now apply nails
@@ -3465,16 +3465,23 @@ public class BigWarp< T >
 
 								// This method changes the contents of costRegion based on the nail. If we want to apply multiple nails in a region, this is the place to do it
 								// This is performed in sampled coords, but with correct origin/min
-								BigWarp.applyNail(sampledCost, nail);
+								BigWarp.applyNail(nailRegion, nail);
 							}
 							System.out.println("All nails have been applied. Now solving graphcut...");
 							long startTime = System.nanoTime();
+
+							ImageJFunctions.wrap(nailRegion, "Sampled cost").show();
 
 							// Run the actual graphcut to generate this patch of heightmap, we need to zeroMin because of upstream methods
 
                             System.out.println("Patch offset: " + offset);
 
-							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(sampledCost), offset, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
+							//RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), offset, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
+							// TODO check, disabled offset
+							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), 0, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
+
+
+							ImageJFunctions.wrap(intHeightmap,"heightmap").show();
 
 							System.out.println("Graphcut done took: " + (System.nanoTime() - startTime));
 
@@ -3499,7 +3506,8 @@ public class BigWarp< T >
 							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
 								hmCursor.fwd();
-								hmCursor.get().set(patchCursor.get().get());
+								// TODO check, added offset here
+								hmCursor.get().set(patchCursor.get().get() + offset);
 							}
 							System.out.println("Heightmap has been patched");
 						}
@@ -3622,10 +3630,10 @@ public class BigWarp< T >
 	/**
      * This method nails the X/Z border of the costRegion at Y-positions encoded by the heightmap
      * This is a mutable function
-     * @param costRegion
-     * @param heightmap
-     */
-    private RandomAccessibleInterval<DoubleType> nailRegionBorder(RandomAccessibleInterval<DoubleType> costRegion, RandomAccessibleInterval<DoubleType> heightmap) {
+	 * @param costRegion, in subsampled coordinates, with the correct min
+	 * @param heightmap
+	 */
+    private void nailRegionBorder(RandomAccessibleInterval<DoubleType> costRegion, RandomAccessibleInterval<DoubleType> heightmap) {
 	    // Nail periphery to the heightmap along X
         long[] crPos = new long[3];// for costRegion
         long[] hmPos = new long[2];// for heightmap
@@ -3633,10 +3641,10 @@ public class BigWarp< T >
         RandomAccess<DoubleType> hmAccess = heightmap.randomAccess();
 
         // Nail along X border (at min/max Y of interval)
-        for( long x = costRegion.min(0); x < costRegion.max(0); x++ ) {
+        for( long x = costRegion.min(0); x <= costRegion.max(0); x++ ) {
             crPos[0] = x;
             hmPos[0] = x;
-            for( long z = costRegion.min(2); z < costRegion.max(2); z++ ) {
+            for( long z = costRegion.min(2); z <= costRegion.max(2); z++ ) {
                 crPos[2] = z;
 
                 // Apply along min Y boundary
@@ -3666,10 +3674,10 @@ public class BigWarp< T >
         }
 
         // Nail along Y border (at min/max X of interval)
-        for( long y = costRegion.min(1); y < costRegion.max(1); y+= costStep ) {
+        for( long y = costRegion.min(1); y <= costRegion.max(1); y++ ) {
             crPos[1] = y;
-            hmPos[1] = y;
-            for( long z = costRegion.min(2); z < costRegion.max(2); z++ ) {
+            hmPos[1] = y + ( y - costRegion.min(1) ) * costStep;
+            for( long z = costRegion.min(2); z <= costRegion.max(2); z++ ) {
                 crPos[2] = z;
 
                 // Apply along min X boundary
@@ -3698,8 +3706,7 @@ public class BigWarp< T >
             }
         }
 
-        return costRegion;
-    }
+	}
 
 	private RandomAccessibleInterval<DoubleType> getCostImg() {
 		RandomAccessibleInterval<DoubleType> rai = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
@@ -3794,41 +3801,31 @@ public class BigWarp< T >
 		return new Source<?>[]{volatileMipmapSourceFlat, volatileMipmapSourceOriginal};
 	}
 
-    /**
-     * Take a nail in source space and snap it to a grid (presumably determined by cost function subsampling)
-     * @param inNail
-     * @return nail snapped to grid
-     */
-	private static long[] nailToGrid(Double[] inNail) {
-        //long[] outNail = new long[]{Math.round(inNail[0]), Math.round(inNail[2]), Math.round(inNail[1])};// FIXME this code currently swaps nail axes
-
-        long[] outNail = new long[]{Math.round(inNail[0]), Math.round(inNail[1] / costStep), Math.round(inNail[2])};
-
-        return outNail;
-    }
-
+	/**
+	 * Apply a nail in the costImg. The costImg is expected to be in subsampled dimensions with the correct min
+	 * @param costImg
+	 * @param nail
+	 */
     private static void applyNail(RandomAccessibleInterval<DoubleType> costImg, Double[] nail) {
         RandomAccess<DoubleType> ra = costImg.randomAccess();
 
-        long[] gridNail = nailToGrid(nail);
+        long[] gridNail = new long[]{Math.round(nail[0]), 0, Math.round(nail[2])};
+        // Place the y-coord in subsampled space (with correct min)
+        gridNail[1] = costImg.min(1) + Math.round( (nail[1] - costImg.min(1) ) / costStep );
 
         long[] pos = new long[]{gridNail[0], gridNail[1], 0};
 
         long zStart, zStop;
-        if( gridNail[2] < costImg.dimension(2) / 2 ) {
-        	zStart = costImg.min(2);
-        	zStop = costImg.min(2) + costImg.dimension(2) / 2;
-		} else {
-        	zStart = costImg.min(2) + costImg.dimension(2) / 2;
-        	zStop = costImg.max(2);
-		}
+		zStart = costImg.min(2);
+		zStop = costImg.max(2);
 
         // Loop over Z-coordinates and place nail + nail penalties
-        for( long z = zStart; z < zStop; z++ ) {
+        for( long z = zStart; z <= zStop; z++ ) {
             pos[2] = z;
             ra.setPosition(pos);
             if( z == gridNail[2] ) {
             	ra.get().setReal(0);
+				//ra.get().setReal(nailPenalty);// FIXME undo, debugging only
             } else {
             	ra.get().setReal(nailPenalty);
             }
@@ -4133,216 +4130,216 @@ public class BigWarp< T >
 	}
 
 
-	public static void main( final String[] args ) throws IOException, SpimDataException {
-
-		String nrsFlyem = "/groups/cardona/home/harringtonk/nrs_flyem";
-
-		String costDirectory = nrsFlyem + "/alignment/Z1217-19m/VNC/Sec04/flatten/tmp-flattening-level200/resampled/";
-        //String costDirectory = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/flatten/tmp-flattening-level06/resampled/";
-		// TODO open cost directory and interpolate to appropriate size
-		//Img<RealType> costImg = SemaUtils.readAndFlipCost(costDirectory);
-		Img<RealType> sourceCostImg = SemaUtils.readAndFlipCost(costDirectory);
-
-		String rawN5 = nrsFlyem + "/render/n5/Z1217_19m/Sec04/stacks";
-		String datasetName = "/v1_1_affine_filtered_1_26365___20191217_153959";
-
-		long padding = 2000;
-		boolean useVolatile = true;
-
-		FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", new double[]{1, 1, 1});
-
-		String fnLandmarks = "";
-
-		// Everything below this should not require adjustments for input file changes
-
-		net.imagej.ImageJ imagej = new net.imagej.ImageJ();
-
-		final N5FSReader n5 = new N5FSReader(rawN5);
-
-		/*
-		 * raw data
-		 */
-		final int numProc = Runtime.getRuntime().availableProcessors();
-		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
-
-		final long[] dimensions = n5.getDatasetAttributes(datasetName + "/s0").getDimensions();
-
-		// TODO now compute the min and max surfaces with the initial cost estimate
-		long originalDimX = dimensions[0];
-		long originalDimZ = dimensions[2];
-
-		OpService ops = imagej.op();
-
-		final RandomAccessibleInterval<DoubleType> costRai = Converters.convert((RandomAccessibleInterval<RealType>)sourceCostImg, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-		//RandomAccessibleInterval<RealType> costImg = imagej.op().copy().rai(sourceCostImg);
-
-		double minY, maxY;
-
-		//final RandomAccessibleInterval<IntType> maxUnsignedShorts = getScaledSurfaceMap(getTopImg(costImg, ops), costImg.dimension(2)/2, originalDimX, originalDimZ, ops);
-		Pair<RandomAccessibleInterval<IntType>, DoubleType> maxPair = getScaledSurfaceMapAndAverage(getTopImg(costRai, ops), costRai.dimension(2) / 2, originalDimX, originalDimZ, ops);
-		final RandomAccessibleInterval<IntType> maxUnsignedShorts = maxPair.getA();
-		maxY = maxPair.getB().getRealDouble();
-		System.out.println("Done with top surface");
-
-		//final RandomAccessibleInterval<IntType> minUnsignedShorts = getScaledSurfaceMap(getBotImg(costImg, ops), 0, originalDimX, originalDimZ, ops);
-		Pair<RandomAccessibleInterval<IntType>, DoubleType> minPair = getScaledSurfaceMapAndAverage(getBotImg(costRai, ops), 0, originalDimX, originalDimZ, ops);
-		final RandomAccessibleInterval<IntType> minUnsignedShorts = minPair.getA();
-		minY = minPair.getB().getRealDouble();
-		System.out.println("Done with bottom surface");
-
-		// max/min should be a part of the BigWarp
-		final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxUnsignedShorts, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-		final RandomAccessibleInterval<DoubleType> min = Converters.convert(minUnsignedShorts, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-
-		System.out.println("minY is " +  minY + " and maxY is " + maxY);
-
-		final FinalInterval cropInterval = new FinalInterval(
-				new long[] {0, 0, Math.round(minY) - padding},
-				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxY) + padding});
-
-		final int numScales = n5.list(datasetName).length;
-
-		@SuppressWarnings("unchecked")
-		final RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = new RandomAccessibleInterval[numScales];
-
-		@SuppressWarnings("unchecked")
-		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsFlat = new RandomAccessibleInterval[numScales];
-		@SuppressWarnings("unchecked")
-		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsOriginal = new RandomAccessibleInterval[numScales];
-
-		final double[][] scales = new double[numScales][];
-
-		/*
-		 * raw pixels for mipmap level
-		 * can be reused when transformation updates
-		 */
-		for (int s = 0; s < numScales; ++s) {
-
-			/* TODO read downsamplingFactors */
-			final int scale = 1 << s;
-			final double inverseScale = 1.0 / scale;
-
-			rawMipmaps[s] =
-					N5Utils.openVolatile(
-							n5,
-							datasetName + "/s" + s);
-		}
-
-
-		BdvStackSource<?> bdvFlat = null;
-		BdvStackSource<?> bdvOriginal = null;
-
-		/*
-		 * transform, everything below needs update when transform changes
-		 * FIXME: remember to not use a cache for the flattened source
-		 */
-		for (int s = 0; s < numScales; ++s) {
-
-			/* TODO read downsamplingFactors */
-			final int scale = 1 << s;
-			final double inverseScale = 1.0 / scale;
-
-			final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
-			final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
-			final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
-//			transformSequenceFlat.add(shift);
-//			transformSequenceFlat.add(ft.inverse());
-//			transformSequenceFlat.add(shift.inverse());
-//			transformSequenceFlat.add(scale3D);
-
-			final RandomAccessibleInterval<UnsignedByteType> flatSource =
-					Transform.createTransformedInterval(
-							Views.permute(rawMipmaps[s], 1, 2),
-							cropInterval,
-							scale3D,
-							//transformSequenceFlat,
-							new UnsignedByteType(0));
-			final RandomAccessibleInterval<UnsignedByteType> originalSource =
-					Transform.createTransformedInterval(
-							Views.permute(rawMipmaps[s], 1, 2),
-							cropInterval,
-							scale3D,
-							new UnsignedByteType(0));
-
-			final SubsampleIntervalView<UnsignedByteType> subsampledFlatSource = Views.subsample(flatSource, scale);
-			final RandomAccessibleInterval<UnsignedByteType> cachedFlatSource = Show.wrapAsVolatileCachedCellImg(subsampledFlatSource, new int[]{32, 32, 32});
-
-			final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
-			final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
-
-			if( useVolatile ) {
-				mipmapsFlat[s] = cachedFlatSource;
-				mipmapsOriginal[s] = cachedOriginalSource;
-			} else {
-				mipmapsFlat[s] = subsampledFlatSource;
-				mipmapsOriginal[s] = subsampledOriginalSource;
-			}
-			scales[s] = new double[]{scale, scale, scale};
-		}
-
-		/*
-		 * update when transforms change
-		 */
-		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceFlat =
-				new RandomAccessibleIntervalMipmapSource<>(
-						mipmapsFlat,
-						new UnsignedByteType(),
-						scales,
-						voxelDimensions,
-						datasetName);
-		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceOriginal =
-				new RandomAccessibleIntervalMipmapSource<>(
-						mipmapsOriginal,
-						new UnsignedByteType(),
-						scales,
-						voxelDimensions,
-						datasetName);
-
-		final Source<?> volatileMipmapSourceFlat;
-		final Source<?> volatileMipmapSourceOriginal;
-		if (useVolatile) {
-			volatileMipmapSourceFlat = mipmapSourceFlat.asVolatile(queue);
-			volatileMipmapSourceOriginal = mipmapSourceOriginal.asVolatile(queue);
-		} else {
-			volatileMipmapSourceFlat = mipmapSourceFlat;
-			volatileMipmapSourceOriginal = mipmapSourceOriginal;
-		}
-
-		ProgressWriterIJ progress = new ProgressWriterIJ();
-
-		BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{volatileMipmapSourceFlat},
-				new Source[]{volatileMipmapSourceOriginal},
-				new String[]{"Flat", "Original"});
-
-		BigWarp bw;
-		bw = new BigWarp( bwData, new File( rawN5 ).getName(), progress );
-		bw.imagej = imagej;
-
-		bw.setIsMovingDisplayTransformed(true);
-
-		// SEMA max/min heightmap
-		//bw.max = max;
-		//bw.min = min;
-
-		// For testing w/ fullSizeCost
-//        IntervalView<RealType> fullSizeCost = Views.interval(Views.raster(Views.interpolate(sourceCostImg, new NLinearInterpolatorFactory<>())),
-//                Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]));
-
-		bw.fullSizeInterval = Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]);
-
-		final RandomAccessibleInterval<DoubleType> costRaiDouble = Converters.convert(costRai, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-
-		bw.sourceCostImg = costRaiDouble;
-		bw.restimateTransformation();
-		bw.rawMipmaps = rawMipmaps;
-		bw.useVolatile = useVolatile;
-		bw.queue = queue;
-
-		//bw.setTransformationMovingSourceOnly(ft);
-
-		if ( !fnLandmarks.isEmpty() )
-			bw.getLandmarkPanel().getTableModel().load( new File( fnLandmarks ) );
-
-
-	}
+//	public static void main( final String[] args ) throws IOException, SpimDataException {
+//
+//		String nrsFlyem = "/groups/cardona/home/harringtonk/nrs_flyem";
+//
+//		String costDirectory = nrsFlyem + "/alignment/Z1217-19m/VNC/Sec04/flatten/tmp-flattening-level200/resampled/";
+//        //String costDirectory = "/groups/cardona/home/harringtonk/nrs_flyem/alignment/Z1217-19m/VNC/Sec04/flatten/tmp-flattening-level06/resampled/";
+//		// TODO open cost directory and interpolate to appropriate size
+//		//Img<RealType> costImg = SemaUtils.readAndFlipCost(costDirectory);
+//		Img<RealType> sourceCostImg = SemaUtils.readAndFlipCost(costDirectory);
+//
+//		String rawN5 = nrsFlyem + "/render/n5/Z1217_19m/Sec04/stacks";
+//		String datasetName = "/v1_1_affine_filtered_1_26365___20191217_153959";
+//
+//		long padding = 2000;
+//		boolean useVolatile = true;
+//
+//		FinalVoxelDimensions voxelDimensions = new FinalVoxelDimensions("px", new double[]{1, 1, 1});
+//
+//		String fnLandmarks = "";
+//
+//		// Everything below this should not require adjustments for input file changes
+//
+//		net.imagej.ImageJ imagej = new net.imagej.ImageJ();
+//
+//		final N5FSReader n5 = new N5FSReader(rawN5);
+//
+//		/*
+//		 * raw data
+//		 */
+//		final int numProc = Runtime.getRuntime().availableProcessors();
+//		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
+//
+//		final long[] dimensions = n5.getDatasetAttributes(datasetName + "/s0").getDimensions();
+//
+//		// TODO now compute the min and max surfaces with the initial cost estimate
+//		long originalDimX = dimensions[0];
+//		long originalDimZ = dimensions[2];
+//
+//		OpService ops = imagej.op();
+//
+//		final RandomAccessibleInterval<DoubleType> costRai = Converters.convert((RandomAccessibleInterval<RealType>)sourceCostImg, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+//		//RandomAccessibleInterval<RealType> costImg = imagej.op().copy().rai(sourceCostImg);
+//
+//		double minY, maxY;
+//
+//		//final RandomAccessibleInterval<IntType> maxUnsignedShorts = getScaledSurfaceMap(getTopImg(costImg, ops), costImg.dimension(2)/2, originalDimX, originalDimZ, ops);
+//		Pair<RandomAccessibleInterval<IntType>, DoubleType> maxPair = getScaledSurfaceMapAndAverage(getTopImg(costRai, ops), costRai.dimension(2) / 2, originalDimX, originalDimZ, ops);
+//		final RandomAccessibleInterval<IntType> maxUnsignedShorts = maxPair.getA();
+//		maxY = maxPair.getB().getRealDouble();
+//		System.out.println("Done with top surface");
+//
+//		//final RandomAccessibleInterval<IntType> minUnsignedShorts = getScaledSurfaceMap(getBotImg(costImg, ops), 0, originalDimX, originalDimZ, ops);
+//		Pair<RandomAccessibleInterval<IntType>, DoubleType> minPair = getScaledSurfaceMapAndAverage(getBotImg(costRai, ops), 0, originalDimX, originalDimZ, ops);
+//		final RandomAccessibleInterval<IntType> minUnsignedShorts = minPair.getA();
+//		minY = minPair.getB().getRealDouble();
+//		System.out.println("Done with bottom surface");
+//
+//		// max/min should be a part of the BigWarp
+//		final RandomAccessibleInterval<DoubleType> max = Converters.convert(maxUnsignedShorts, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+//		final RandomAccessibleInterval<DoubleType> min = Converters.convert(minUnsignedShorts, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+//
+//		System.out.println("minY is " +  minY + " and maxY is " + maxY);
+//
+//		final FinalInterval cropInterval = new FinalInterval(
+//				new long[] {0, 0, Math.round(minY) - padding},
+//				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxY) + padding});
+//
+//		final int numScales = n5.list(datasetName).length;
+//
+//		@SuppressWarnings("unchecked")
+//		final RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = new RandomAccessibleInterval[numScales];
+//
+//		@SuppressWarnings("unchecked")
+//		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsFlat = new RandomAccessibleInterval[numScales];
+//		@SuppressWarnings("unchecked")
+//		final RandomAccessibleInterval<UnsignedByteType>[] mipmapsOriginal = new RandomAccessibleInterval[numScales];
+//
+//		final double[][] scales = new double[numScales][];
+//
+//		/*
+//		 * raw pixels for mipmap level
+//		 * can be reused when transformation updates
+//		 */
+//		for (int s = 0; s < numScales; ++s) {
+//
+//			/* TODO read downsamplingFactors */
+//			final int scale = 1 << s;
+//			final double inverseScale = 1.0 / scale;
+//
+//			rawMipmaps[s] =
+//					N5Utils.openVolatile(
+//							n5,
+//							datasetName + "/s" + s);
+//		}
+//
+//
+//		BdvStackSource<?> bdvFlat = null;
+//		BdvStackSource<?> bdvOriginal = null;
+//
+//		/*
+//		 * transform, everything below needs update when transform changes
+//		 * FIXME: remember to not use a cache for the flattened source
+//		 */
+//		for (int s = 0; s < numScales; ++s) {
+//
+//			/* TODO read downsamplingFactors */
+//			final int scale = 1 << s;
+//			final double inverseScale = 1.0 / scale;
+//
+//			final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
+//			final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
+//			final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
+////			transformSequenceFlat.add(shift);
+////			transformSequenceFlat.add(ft.inverse());
+////			transformSequenceFlat.add(shift.inverse());
+////			transformSequenceFlat.add(scale3D);
+//
+//			final RandomAccessibleInterval<UnsignedByteType> flatSource =
+//					Transform.createTransformedInterval(
+//							Views.permute(rawMipmaps[s], 1, 2),
+//							cropInterval,
+//							scale3D,
+//							//transformSequenceFlat,
+//							new UnsignedByteType(0));
+//			final RandomAccessibleInterval<UnsignedByteType> originalSource =
+//					Transform.createTransformedInterval(
+//							Views.permute(rawMipmaps[s], 1, 2),
+//							cropInterval,
+//							scale3D,
+//							new UnsignedByteType(0));
+//
+//			final SubsampleIntervalView<UnsignedByteType> subsampledFlatSource = Views.subsample(flatSource, scale);
+//			final RandomAccessibleInterval<UnsignedByteType> cachedFlatSource = Show.wrapAsVolatileCachedCellImg(subsampledFlatSource, new int[]{32, 32, 32});
+//
+//			final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
+//			final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
+//
+//			if( useVolatile ) {
+//				mipmapsFlat[s] = cachedFlatSource;
+//				mipmapsOriginal[s] = cachedOriginalSource;
+//			} else {
+//				mipmapsFlat[s] = subsampledFlatSource;
+//				mipmapsOriginal[s] = subsampledOriginalSource;
+//			}
+//			scales[s] = new double[]{scale, scale, scale};
+//		}
+//
+//		/*
+//		 * update when transforms change
+//		 */
+//		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceFlat =
+//				new RandomAccessibleIntervalMipmapSource<>(
+//						mipmapsFlat,
+//						new UnsignedByteType(),
+//						scales,
+//						voxelDimensions,
+//						datasetName);
+//		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceOriginal =
+//				new RandomAccessibleIntervalMipmapSource<>(
+//						mipmapsOriginal,
+//						new UnsignedByteType(),
+//						scales,
+//						voxelDimensions,
+//						datasetName);
+//
+//		final Source<?> volatileMipmapSourceFlat;
+//		final Source<?> volatileMipmapSourceOriginal;
+//		if (useVolatile) {
+//			volatileMipmapSourceFlat = mipmapSourceFlat.asVolatile(queue);
+//			volatileMipmapSourceOriginal = mipmapSourceOriginal.asVolatile(queue);
+//		} else {
+//			volatileMipmapSourceFlat = mipmapSourceFlat;
+//			volatileMipmapSourceOriginal = mipmapSourceOriginal;
+//		}
+//
+//		ProgressWriterIJ progress = new ProgressWriterIJ();
+//
+//		BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{volatileMipmapSourceFlat},
+//				new Source[]{volatileMipmapSourceOriginal},
+//				new String[]{"Flat", "Original"});
+//
+//		BigWarp bw;
+//		bw = new BigWarp( bwData, new File( rawN5 ).getName(), progress );
+//		bw.imagej = imagej;
+//
+//		bw.setIsMovingDisplayTransformed(true);
+//
+//		// SEMA max/min heightmap
+//		//bw.max = max;
+//		//bw.min = min;
+//
+//		// For testing w/ fullSizeCost
+////        IntervalView<RealType> fullSizeCost = Views.interval(Views.raster(Views.interpolate(sourceCostImg, new NLinearInterpolatorFactory<>())),
+////                Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]));
+//
+//		bw.fullSizeInterval = Intervals.createMinMax(0, 0, 0, dimensions[0], dimensions[1], dimensions[2]);
+//
+//		final RandomAccessibleInterval<DoubleType> costRaiDouble = Converters.convert(costRai, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
+//
+//		bw.sourceCostImg = costRaiDouble;
+//		bw.restimateTransformation();
+//		bw.rawMipmaps = rawMipmaps;
+//		bw.useVolatile = useVolatile;
+//		bw.queue = queue;
+//
+//		//bw.setTransformationMovingSourceOnly(ft);
+//
+//		if ( !fnLandmarks.isEmpty() )
+//			bw.getLandmarkPanel().getTableModel().load( new File( fnLandmarks ) );
+//
+//
+//	}
 }
