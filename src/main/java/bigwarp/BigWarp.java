@@ -328,7 +328,8 @@ public class BigWarp< T >
 	double transformScaleX = 1;
 	double transformScaleY = 1;
 
-	private static double nailPenalty = Double.MAX_VALUE;
+	private static double nailReward = 0;//Double.MIN_VALUE;// only used for the manually placed nail, not border
+	private static double nailPenalty = 10000;//Double.MAX_VALUE;
     //private static double nailPenalty = 1000;
 	private static int costStep = 6;
 
@@ -3392,7 +3393,7 @@ public class BigWarp< T >
 					{
 						//InvertibleRealTransform invXfm = bw.getTransformation( index );
 						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
-						
+
 						// The code below is written expecting that costImg is lazy, otherwise it might run out of memory on full scale data
 						RandomAccessibleInterval<DoubleType> costImg = Views.permute(bw.getCostImg(), 1, 2);
 
@@ -3677,7 +3678,8 @@ public class BigWarp< T >
 
                 // Apply along max Y boundary
                 crPos[1] = costRegion.max(1);
-                hmPos[1] = crPos[1];
+                // just use dimension instead of this max-min
+                hmPos[1] = costRegion.min(1) + ( costRegion.max(1) - costRegion.min(1) ) * costStep;
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(hmPos);
                 hmVal = hmAccess.get().getRealDouble();
@@ -3710,7 +3712,8 @@ public class BigWarp< T >
 
                 // Apply along max X boundary
                 crPos[0] = costRegion.max(0);
-                hmPos[0] = crPos[0];
+                hmPos[0] = costRegion.min(0) + ( costRegion.max(0) - costRegion.min(0) ) * costStep;
+                //hmPos[0] = crPos[0];
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(hmPos);
                 hmVal = hmAccess.get().getRealDouble();
@@ -3841,7 +3844,7 @@ public class BigWarp< T >
             pos[2] = z;
             ra.setPosition(pos);
             if( z == gridNail[2] ) {
-            	ra.get().setReal(0);
+            	ra.get().setReal(nailReward);
 				//ra.get().setReal(nailPenalty);// FIXME undo, debugging only
             } else {
             	ra.get().setReal(nailPenalty);
