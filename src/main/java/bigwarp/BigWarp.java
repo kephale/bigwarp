@@ -328,13 +328,13 @@ public class BigWarp< T >
 	double transformScaleX = 1;
 	double transformScaleY = 1;
 
-	private static double nailReward = 0;//Double.MIN_VALUE;// only used for the manually placed nail, not border
+	private static double nailReward = -100000;//Double.MIN_VALUE;// only used for the manually placed nail, not border
 	private static double nailPenalty = 10000;//Double.MAX_VALUE;
     //private static double nailPenalty = 1000;
-	private static int costStep = 6;
+	private static int costStep = 1;
 
 	private long flattenPadding = 2000;
-	private long nailPadding = 120;
+	private long nailPadding = 30;
 	//private long nailPadding = 20;
 	private net.imagej.ImageJ imagej;
     
@@ -3445,10 +3445,13 @@ public class BigWarp< T >
 							RandomAccessibleInterval<DoubleType> sampledCost = Views.translate(Views.subsample(costRegion, costStep, costStep, 1), costMin);
 							// Now sampledCost is downscaled along Y, but has the correct origin
 
+							RandomAccessibleInterval<DoubleType> smoothedCost = bw.imagej.op().filter().gauss(sampledCost, 2, 2, 0);
+
 							// Create a new RAI and copy the cost region
-							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) sampledCost);
+							//RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) sampledCost);
+							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) smoothedCost);
 							net.imglib2.Cursor<DoubleType> nrCursor = Views.flatIterable(nailRegion).cursor();
-							net.imglib2.Cursor<DoubleType> sourceCursor = Views.flatIterable(sampledCost).cursor();
+							net.imglib2.Cursor<DoubleType> sourceCursor = Views.flatIterable(smoothedCost).cursor();
 							while (sourceCursor.hasNext()) {
 								sourceCursor.fwd();
 								nrCursor.fwd();
@@ -3660,7 +3663,7 @@ public class BigWarp< T >
         // Nail along X border (at min/max Y of interval)
         for( long x = costRegion.min(0); x <= costRegion.max(0); x++ ) {
             crPos[0] = x;
-            hmPos[0] = x + ( x - costRegion.min(0) ) * costStep;
+            hmPos[0] = costRegion.min(0) + ( x - costRegion.min(0) ) * costStep;
             for( long z = costRegion.min(2); z <= costRegion.max(2); z++ ) {
                 crPos[2] = z;
 
@@ -3679,7 +3682,7 @@ public class BigWarp< T >
                 // Apply along max Y boundary
                 crPos[1] = costRegion.max(1);
                 // just use dimension instead of this max-min
-                hmPos[1] = costRegion.min(1) + ( costRegion.max(1) - costRegion.min(1) ) * costStep;
+                hmPos[1] = costRegion.min(1) + costRegion.dimension(1) * costStep;
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(hmPos);
                 hmVal = hmAccess.get().getRealDouble();
@@ -3694,7 +3697,7 @@ public class BigWarp< T >
         // Nail along Y border (at min/max X of interval)
         for( long y = costRegion.min(1); y <= costRegion.max(1); y++ ) {
             crPos[1] = y;
-            hmPos[1] = y + ( y - costRegion.min(1) ) * costStep;
+            hmPos[1] = costRegion.min(1) + ( y - costRegion.min(1) ) * costStep;
             for( long z = costRegion.min(2); z <= costRegion.max(2); z++ ) {
                 crPos[2] = z;
 
@@ -3712,7 +3715,7 @@ public class BigWarp< T >
 
                 // Apply along max X boundary
                 crPos[0] = costRegion.max(0);
-                hmPos[0] = costRegion.min(0) + ( costRegion.max(0) - costRegion.min(0) ) * costStep;
+                hmPos[0] = costRegion.min(0) + costRegion.dimension(0) * costStep;
                 //hmPos[0] = crPos[0];
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(hmPos);
