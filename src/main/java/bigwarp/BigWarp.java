@@ -331,16 +331,16 @@ public class BigWarp< T >
 	private static double nailReward = -100000;//Double.MIN_VALUE;// only used for the manually placed nail, not border
 	private static double nailPenalty = 10000;//Double.MAX_VALUE;
     //private static double nailPenalty = 1000;
-	private static int costStep = 1;
+	private static int costStep = 6;
 
 	private long flattenPadding = 2000;
-	private long nailPadding = 30;
+	private long nailPadding = costStep * 10;
 	//private long nailPadding = 20;
 	private net.imagej.ImageJ imagej;
-    
+
     private RandomAccessibleInterval<DoubleType> sourceCostImg;
 	private FinalInterval fullSizeInterval;
-	
+
 	private RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps;
 	private boolean useVolatile;
 	private SharedQueue queue;
@@ -3498,7 +3498,7 @@ public class BigWarp< T >
 							//RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), offset, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
 							// TODO check, disabled offset
 							//heightScaleFactor = ((float)originalDimX) / ((float)img.dimension(0));
-							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), 0, costRegion.dimension(0), costRegion.dimension(1),  bw.imagej.op(), 1);
+							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), 0, costRegion.dimension(0) + costStep - 1, costRegion.dimension(1) + costStep - 1,  bw.imagej.op(), 1);
 
 
 							ImageJFunctions.wrap(intHeightmap,"heightmap").show();
@@ -3510,18 +3510,15 @@ public class BigWarp< T >
 									Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType()),
 									costRegion.min(0), costRegion.min(1));
 
-							FinalInterval patchInterval = Intervals.createMinMax(costRegion.min(0), costRegion.min(1), costRegion.max(0), costRegion.max(1));
-
 							System.out.println("Patching heightmap at: ");
-							System.out.println("Min: " + patchInterval.min(0) + " " + patchInterval.min(1));
-							System.out.println("Max: " + patchInterval.max(0) + " " + patchInterval.max(1));
+							System.out.println("Min: " + heightmapPatch.min(0) + " " + heightmapPatch.min(1));
+							System.out.println("Max: " + heightmapPatch.max(0) + " " + heightmapPatch.max(1));
 
-							System.out.println("Previous patch average value: " + SemaUtils.getAvgValue(Views.interval(heightmap, patchInterval)));
+							System.out.println("Previous patch average value: " + SemaUtils.getAvgValue(Views.interval(heightmap, heightmapPatch)));
 							System.out.println("Replacement patch average value: " + SemaUtils.getAvgValue(heightmapPatch));
 
-
 							// Copy the patch into the heightmap
-							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, patchInterval)).cursor();
+							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, heightmapPatch)).cursor();
 							net.imglib2.Cursor<DoubleType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
 							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
@@ -3832,6 +3829,7 @@ public class BigWarp< T >
         RandomAccess<DoubleType> ra = costImg.randomAccess();
 
         long[] gridNail = new long[]{0, 0, Math.round(nail[2])};
+
         // Place the y-coord in subsampled space (with correct min)
         gridNail[0] = costImg.min(0) + Math.round( (nail[0] - costImg.min(0) ) / costStep );
         gridNail[1] = costImg.min(1) + Math.round( (nail[1] - costImg.min(1) ) / costStep );
