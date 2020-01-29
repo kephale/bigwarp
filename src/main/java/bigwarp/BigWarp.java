@@ -44,6 +44,7 @@ import mpicbg.spim.data.sequence.FinalVoxelDimensions;
 import net.imagej.ops.OpService;
 import net.imglib2.*;
 import net.imglib2.RandomAccess;
+import net.imglib2.algorithm.gauss3.Gauss3;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.converter.Converters;
 import net.imglib2.img.Img;
@@ -3442,8 +3443,24 @@ public class BigWarp< T >
 							System.out.println("Min: " + regionMin[0] + " " + regionMin[1] + " " + regionMin[2]);
 							System.out.println("Max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
+							double[] smoothingSigmas = new double[]{2, 2, 0};
+							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
+
+							// TODO check for boundary
+							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
+							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
+
+							// grab a larger cost region
+							IntervalView<DoubleType> costRegionPad = Views.interval(costImg, regionMinPad, regionMaxPad);
+
+							// smooth larger region
+							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
+
+							// crop interior
+							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
+							//IntervalView<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
+
 							// Fetch the known cost data
-							IntervalView<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
 
 							// Get the offset of the cost region
 							long[] costMin = new long[3];
@@ -3453,7 +3470,8 @@ public class BigWarp< T >
 							RandomAccessibleInterval<DoubleType> sampledCost = Views.translate(Views.subsample(costRegion, costStep, costStep, 1), costMin);
 							// Now sampledCost is downscaled along Y, but has the correct origin
 
-							RandomAccessibleInterval<DoubleType> smoothedCost = bw.imagej.op().filter().gauss(sampledCost, 2, 2, 0);
+							RandomAccessibleInterval<DoubleType> smoothedCost = sampledCost;
+							//RandomAccessibleInterval<DoubleType> smoothedCost = bw.imagej.op().filter().gauss(sampledCost, 2, 2, 0);
 
 							// Create a new RAI and copy the cost region
 							//RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) sampledCost);

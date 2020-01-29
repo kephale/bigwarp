@@ -323,10 +323,10 @@ public class NailFlat implements Callable<Void> {
 		// Trigger the first computation of the flatten transform
 		bw.restimateTransformation(true);
 
-		System.out.println("Additional usage instructions:");
+		System.out.println("\nAdditional usage instructions:");
 		System.out.println("f - Apply flatten transform using existing nails");
 		System.out.println("ctrl-n - Generate grid of nails centered around current nail placed along existing heightmap");
-		System.out.println("ctrl-f - Export flatten heightmap and nails");
+		System.out.println("ctrl-f - Export flatten heightmap and nails\n");
 
 		return null;
 	}
