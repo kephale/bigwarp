@@ -2527,12 +2527,13 @@ public class BigWarp< T >
 
 	long lastNumLandmarks = -1;
 	long hashSum = -1;
-	public boolean restimateTransformation()
+	public boolean restimateTransformation(boolean forceReestimate)
 	{
         List<Boolean> changeFlags = landmarkModel.getChangedSinceWarp();
         Optional<Boolean> anyChanged = changeFlags.stream().reduce((a, b) -> a || b);
 
-        if( !anyChanged.isPresent() || anyChanged.get() ||  landmarkModel.getActiveRowCount() != lastNumLandmarks ) {
+        if( ( !anyChanged.isPresent() || anyChanged.get() ||  landmarkModel.getActiveRowCount() != lastNumLandmarks ) &&
+				( forceReestimate || this.updateWarpOnPtChange ) ) {
             solverThread.requestResolve(true, -1, null);
             lastNumLandmarks = landmarkModel.getActiveRowCount();
         }
@@ -2543,6 +2544,11 @@ public class BigWarp< T >
 		notifyTransformListeners();
 
 		return true;
+	}
+
+	public boolean restimateTransformation()
+	{
+        return restimateTransformation(false);
 	}
 
 	public void setIsMovingDisplayTransformed( final boolean isTransformed )

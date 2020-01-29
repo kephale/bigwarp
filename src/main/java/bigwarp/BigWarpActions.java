@@ -1132,7 +1132,7 @@ public class BigWarpActions
 		public void actionPerformed(ActionEvent e)
 		{
 			System.out.println("Solving and applying flatten transform");
-			bw.restimateTransformation();
+			bw.restimateTransformation(true);
 		}
 	}
 

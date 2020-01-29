@@ -321,7 +321,7 @@ public class NailFlat implements Callable<Void> {
 		//bw.loadNails(n5Path, flattenDataset + nailDataset);// FIXME and see the --resume argument
 
 		// Trigger the first computation of the flatten transform
-		bw.restimateTransformation();
+		bw.restimateTransformation(true);
 
 		return null;
 	}
