@@ -2272,7 +2272,7 @@ public class BigWarp< T >
 
         n5.setAttribute(flattenDataset + minFaceDatasetName, "mean", minMean.get());
         n5.setAttribute(flattenDataset + maxFaceDatasetName, "mean", maxMean.get());
-        System.out.println("Saving heightmaps: " + flattenDataset + minFaceDatasetName + " " + flattenDataset + maxFaceDatasetName);
+        System.out.println("Saving heightmaps (into n5): " + flattenDataset + minFaceDatasetName + " " + flattenDataset + maxFaceDatasetName);
 
         // Now save nails
         // TODO Consider reading existing nails and appending?
@@ -2292,6 +2292,7 @@ public class BigWarp< T >
 			}
 		}
 		N5Utils.save( nailImg, n5, flattenDataset + nailDatasetName, new int[]{2048, 3}, new RawCompression() );
+		System.out.println("Saving nails (into n5): " + flattenDataset + nailDatasetName);
     }
 
     public void setFlattenSubContainer(String flattenDataset) {
@@ -2783,6 +2784,7 @@ public class BigWarp< T >
 		public void mousePressed( final MouseEvent e )
 		{
 			pressTime = System.currentTimeMillis();
+
 
 			// shift down is reserved for drag overlay
 			if ( e.isShiftDown() ) { return; }
