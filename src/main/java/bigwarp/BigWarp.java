@@ -3446,12 +3446,11 @@ public class BigWarp< T >
 							double[] smoothingSigmas = new double[]{2, 2, 0};
 							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
 
-							// TODO check for boundary
 							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
 							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
 
 							// grab a larger cost region
-							IntervalView<DoubleType> costRegionPad = Views.interval(costImg, regionMinPad, regionMaxPad);
+							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
 
 							// smooth larger region
 							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
