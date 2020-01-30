@@ -3566,8 +3566,14 @@ public class BigWarp< T >
 						// Now export the results to our flatten dataset in the n5
                         //bw.saveFlatten();
 
-                        DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
-                        DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
+						N5FSReader n5 = new N5FSReader(bw.n5Path);
+
+                        DoubleType minMean = n5.getAttribute(bw.flattenDataset + BigWarp.minFaceDatasetName, "mean", DoubleType.class);
+						if( minMean == null ) minMean = SemaUtils.getAvgValue(bw.minHeightmap);
+						DoubleType maxMean = n5.getAttribute(bw.flattenDataset + BigWarp.maxFaceDatasetName, "mean", DoubleType.class);
+						if( maxMean == null ) maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
+
+
                         // TODO maybe always read from cache
                         System.out.println("minY is " +  minMean.get() + " and maxY is " + maxMean.get());
 
@@ -3643,7 +3649,7 @@ public class BigWarp< T >
 						bw.getViewerFrameQ().getViewerPanel().requestRepaint();
 					}
 
-					catch ( final RejectedExecutionException e )
+					catch ( final RejectedExecutionException | IOException e )
 					{
 						// this happens when the rendering threadpool
 						// is killed before the painter thread.
