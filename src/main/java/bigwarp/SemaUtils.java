@@ -13,6 +13,7 @@ import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
+import net.imglib2.util.RealSum;
 import net.imglib2.view.IntervalView;
 import net.imglib2.view.Views;
 
@@ -70,21 +71,49 @@ public class SemaUtils {
         long[] pos = new long[rai.numDimensions()];
         for( int k = 0; k < pos.length; k++ ) pos[k] = 0;
         ra.localize(pos);
-        DoubleType avg = new DoubleType();
 
         long count = 0;
-        double dAvg = 0;
+        final RealSum sum = new RealSum();
         for( pos[0] = 0; pos[0] < rai.dimension(0); pos[0]++ ) {
             for( pos[1] = 0; pos[1] < rai.dimension(1); pos[1]++ ) {
                 ra.setPosition(pos);
-                if( !Double.isNaN(ra.get().getRealDouble()) && !Double.isInfinite(ra.get().getRealDouble()) ) {
-                    dAvg += ra.get().getRealDouble();
+                final double v = ra.get().getRealDouble();
+                if( !Double.isNaN(v) && !Double.isInfinite(v) ) {
+                	sum.add( v );
                     count++;
                 }
             }
         }
 
-        return new DoubleType(dAvg / count);
+        return new DoubleType(sum.getSum() / count);
+    }
+    
+    public static DoubleType getApproxAvgValue( final RandomAccessibleInterval<DoubleType> rai, final int numDraws)
+    {
+    	final int n = rai.numDimensions();
+    	Random rnd = new Random( System.currentTimeMillis() );
+    	RealSum sum = new RealSum();
+    	final RandomAccess< DoubleType > ra = rai.randomAccess();
+   
+    	long count = 0;
+    	
+    	do
+    	{
+    		for ( int d = 0; d < n; ++d )
+    			ra.setPosition( rnd.nextInt( (int)rai.dimension(d)) + (int)rai.min(d), d );
+    		
+    		final double v = ra.get().getRealDouble();
+    		
+    		if( !Double.isNaN(v) && !Double.isInfinite(v) )
+    		{
+    			sum.add(v);
+                count++;
+                System.out.println( count );
+            }
+    	}
+    	while ( count < numDraws );
+    	
+    	return new DoubleType( sum.getSum() / count);
     }
 
 //    public static DoubleType getAvgValue(Iterable<DoubleType> ii) throws Exception {

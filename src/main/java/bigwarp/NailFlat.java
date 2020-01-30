@@ -16,8 +16,29 @@
  */
 package bigwarp;
 
+import static bigwarp.BigWarp.makeFlatAndOriginalSource;
+import static bigwarp.BigWarp.zRange;
+
+import java.io.File;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import org.janelia.saalfeldlab.hotknife.FlattenTransform;
+import org.janelia.saalfeldlab.hotknife.util.Show;
+import org.janelia.saalfeldlab.hotknife.util.Transform;
+import org.janelia.saalfeldlab.n5.N5FSReader;
+import org.janelia.saalfeldlab.n5.N5FSWriter;
+import org.janelia.saalfeldlab.n5.RawCompression;
+import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
+import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
+
 import bdv.ij.util.ProgressWriterIJ;
-import bdv.util.*;
+import bdv.util.RandomAccessibleIntervalMipmapSource;
+import bdv.util.RandomAccessibleIntervalSource;
 import bdv.util.volatiles.SharedQueue;
 import bdv.viewer.Source;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
@@ -30,7 +51,11 @@ import net.imglib2.Interval;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.converter.Converters;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
-import net.imglib2.realtransform.*;
+import net.imglib2.realtransform.RealTransformSequence;
+import net.imglib2.realtransform.RealViews;
+import net.imglib2.realtransform.Scale2D;
+import net.imglib2.realtransform.Scale3D;
+import net.imglib2.realtransform.Translation3D;
 import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
@@ -39,28 +64,8 @@ import net.imglib2.util.Intervals;
 import net.imglib2.view.IntervalView;
 import net.imglib2.view.SubsampleIntervalView;
 import net.imglib2.view.Views;
-import org.janelia.saalfeldlab.hotknife.FlattenTransform;
-import org.janelia.saalfeldlab.hotknife.util.Show;
-import org.janelia.saalfeldlab.hotknife.util.Transform;
-import org.janelia.saalfeldlab.n5.GzipCompression;
-import org.janelia.saalfeldlab.n5.N5FSReader;
-import org.janelia.saalfeldlab.n5.N5FSWriter;
-import org.janelia.saalfeldlab.n5.RawCompression;
-import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
-import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import picocli.CommandLine;
 import picocli.CommandLine.Option;
-
-import java.io.File;
-import java.io.IOException;
-import java.time.LocalDateTime;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import static bigwarp.BigWarp.makeFlatAndOriginalSource;
-import static bigwarp.BigWarp.zRange;
 
 /**
  *
@@ -226,6 +231,7 @@ public class NailFlat implements Callable<Void> {
 							n5,
 							scaleDataset);
 
+			// TODO: full res is still full res, is downsampled to every 6th in y when being used 
 			costMipmaps[s] =
 					N5Utils.openVolatile(
 							n5,
@@ -268,6 +274,9 @@ public class NailFlat implements Callable<Void> {
 				new long[]{rawMipmaps[0].dimension(0), rawMipmaps[0].dimension(2), Math.round(maxMean.get()) + padding});
 
 		final Interval zCropInterval = zRange;
+
+		// TODO: Height maps contain NaN's and sometimes strong negative numbers
+		//ImageJFunctions.show(min);
 
 		double transformScaleX = 1;
 		double transformScaleY = 1;

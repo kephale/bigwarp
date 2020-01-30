@@ -2245,7 +2245,7 @@ public class BigWarp< T >
 
 		if( n5.exists(nailDataset) && n5.getDatasetAttributes(nailDataset).getDimensions()[0] > 0 ) {
 
-			CachedCellImg<DoubleType, ?> nailImg = N5Utils.open(n5, nailDataset, new DoubleType(0));
+			CachedCellImg<DoubleType, ?> nailImg = (CachedCellImg)(Object)N5Utils.open(n5, nailDataset, new DoubleType(0));
 
 			CellRandomAccess<DoubleType, ? extends Cell<?>> nira = nailImg.randomAccess();
 
@@ -3393,6 +3393,7 @@ public class BigWarp< T >
 			pleaseResolve = false;
 		}
 
+		// The actual solving thread
 		@Override
 		public void run()
 		{
