@@ -74,6 +74,9 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"-s", "--cost"}, required = true, description = "Cost dataset -d '/cost/Sec22___20200110_133809'")
 	private String costDataset = "/volumes/cost";
 
+	@Option(names = {"--costStep"}, required = false, description = "Cost step size --costStep 6, (default is 1)")
+	private int costStep = 1;
+
 	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/flatten/Sec22___20200110_133809'")
 	private String flattenDataset = "/flatten";
 
@@ -313,6 +316,7 @@ public class NailFlat implements Callable<Void> {
 
 		//bw.setCost(cost);
 		bw.setCost(costMipmaps[0]);
+		bw.setCostStepData(costStep);
 
 		bw.setUpdateWarpOnChange(false);
 
