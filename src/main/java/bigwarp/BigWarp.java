@@ -355,6 +355,9 @@ public class BigWarp< T >
 	private String n5Path;
 	private String flattenDataset;
 
+	// Cost step data is the step size of the cost data (1 means full resolution, e.g. 6 means every 6 slices)
+	private int costStepData = 1;
+
     // These are subdatasets of flatten, such that multiple flattening attempts can be supported
     public static String minFaceDatasetName = "/heightmaps/min";
 	public static String maxFaceDatasetName = "/heightmaps/max";
@@ -2310,6 +2313,10 @@ public class BigWarp< T >
 		}
 	}
 
+	public void setCostStepData(int costStep) {
+		this.costStepData = costStep;
+	}
+
 	public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
@@ -3409,9 +3416,10 @@ public class BigWarp< T >
 
 						long[] dimensions = new long[3];
 						costImg.dimensions(dimensions);
-                        //bw.rawMipmaps[0].dimensions(dimensions);
+						//bw.rawMipmaps[0].dimensions(dimensions);
 
                         System.out.println("cost dimensions: " + dimensions[0] + " " + dimensions[1] + " " + dimensions[2]);
+                        System.out.println("rawmipmap[0] dimensions: " + bw.rawMipmaps[0].dimension(0) + " " + bw.rawMipmaps[0].dimension(1) + " " + bw.rawMipmaps[0].dimension(2));
 
 						// Now process the nails
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
@@ -3432,6 +3440,8 @@ public class BigWarp< T >
 									regionMax[d] = (long) Math.max(regionMax[d], Math.min(nail[d] + bw.nailPadding, dimensions[d] - 1));
 								}
 							}
+
+							// TODO all of this has to be updated to use costStepData
 
 							// Snap region min/max to cost grid
                             regionMin[0] = (long) (Math.floor((double) regionMin[0] / costStep) * costStep);
@@ -3524,17 +3534,15 @@ public class BigWarp< T >
 							//RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), offset, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
 							// TODO check, disabled offset
 							//heightScaleFactor = ((float)originalDimX) / ((float)img.dimension(0));
-							RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), 0, costRegion.dimension(0) + costStep - 1, costRegion.dimension(1) + costStep - 1,  bw.imagej.op(), 1);
+							RandomAccessibleInterval<DoubleType> doubleHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), 0, costRegion.dimension(0) + costStep - 1, costRegion.dimension(1) + costStep - 1,  bw.imagej.op(), 1);
 
 
-							ImageJFunctions.wrap(intHeightmap,"heightmap").show();
+							ImageJFunctions.wrap(doubleHeightmap,"heightmap").show();
 
 							System.out.println("Graphcut done took: " + (System.nanoTime() - startTime));
 
 							// Convert to double *and* undo the zeroMin offset *and* undo height offset
-							RandomAccessibleInterval<DoubleType> heightmapPatch = Views.translate(
-									Converters.convert(intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType()),
-									costRegion.min(0), costRegion.min(1));
+							RandomAccessibleInterval<DoubleType> heightmapPatch = Views.translate( doubleHeightmap, costRegion.min(0), costRegion.min(1));
 
 							System.out.println("Patching heightmap at: ");
 							System.out.println("Min: " + heightmapPatch.min(0) + " " + heightmapPatch.min(1));
