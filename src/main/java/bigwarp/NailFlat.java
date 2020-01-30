@@ -45,6 +45,7 @@ import org.janelia.saalfeldlab.hotknife.util.Transform;
 import org.janelia.saalfeldlab.n5.GzipCompression;
 import org.janelia.saalfeldlab.n5.N5FSReader;
 import org.janelia.saalfeldlab.n5.N5FSWriter;
+import org.janelia.saalfeldlab.n5.RawCompression;
 import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 import picocli.CommandLine;
@@ -52,7 +53,11 @@ import picocli.CommandLine.Option;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static bigwarp.BigWarp.makeFlatAndOriginalSource;
 import static bigwarp.BigWarp.zRange;
@@ -97,13 +102,22 @@ public class NailFlat implements Callable<Void> {
 	public static final void main(String... args) {
 		if( args.length == 0 )
 			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5",
-					"-d", "/zcorr/Sec22___20200106_083252",
-					"-f", "/flatten/Sec22___20200113_kyle002",
-					"-s", "/cost/Sec22___20200110_160724",
+					"-d", "/zcorr/Sec06___20200130_110551",
+					"-f", "/flatten/Sec06___20200130_110551_kyle001",
+					"-s", "/cost/Sec06___20200130",
 					"-u"
-//					"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-bottom.h5",
-//					"--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-top.h5"
+//					"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec06/Sec06-bottom.h5",
+//					"--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec06/Sec06-top.h5"
 					};
+			// these args for Sec22 were used for initial testing
+//			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5",
+//					"-d", "/zcorr/Sec22___20200106_083252",
+//					"-f", "/flatten/Sec22___20200113_kyle002",
+//					"-s", "/cost/Sec22___20200110_160724",
+//					"-u"
+////					"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-bottom.h5",
+////					"--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-top.h5"
+//					};
 			//args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "/cost/Sec23___20200110_152920", "-u"};
 		// to regenerate heightmap from HDF5 use these args
 		    //args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};
@@ -113,7 +127,7 @@ public class NailFlat implements Callable<Void> {
 	}
 
 	@Override
-	public final Void call() throws IOException, SpimDataException {
+	public final Void call() throws IOException, SpimDataException, ExecutionException, InterruptedException {
 		net.imagej.ImageJ imagej = new net.imagej.ImageJ();
 		final N5FSReader n5 = new N5FSReader(n5Path);
 
@@ -130,6 +144,11 @@ public class NailFlat implements Callable<Void> {
 			// TODO add support for loading nails
 		}
 
+		ExecutorService exec = Executors.newFixedThreadPool(8);
+
+
+		System.out.println("Start time: " + LocalDateTime.now());
+
 		// Min heightmap: Load from N5 if possible
 		if( minDataset != null && n5.exists(minDataset) ) {
 			System.out.println("Loading min face from N5 " + minDataset);
@@ -144,9 +163,10 @@ public class NailFlat implements Callable<Void> {
 
 			// Using an HDF5 RAI can be slow when computing transforms, write to N5 and use that
 			N5FSWriter n5w = new N5FSWriter(n5Path);
-			N5Utils.save(minConv, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new GzipCompression());
+			N5Utils.save(minConv, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new RawCompression(), exec);
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
 		}
+		System.out.println("Time: " + LocalDateTime.now());
 
 		// Min heightmap: Load from N5 if possible
 		if( maxDataset != null && n5.exists(maxDataset) ) {
@@ -162,9 +182,10 @@ public class NailFlat implements Callable<Void> {
 
 			// Using an HDF5 RAI can be slow when computing transforms, write to N5 and use that
 			N5FSWriter n5w = new N5FSWriter(n5Path);
-			N5Utils.save(maxConv, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new GzipCompression());
+			N5Utils.save(maxConv, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression(), exec);
 			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
 		}
+		System.out.println("Time: " + LocalDateTime.now());
 
 		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
@@ -204,6 +225,7 @@ public class NailFlat implements Callable<Void> {
 			scales[s] = new double[]{scale, scale, scale};
 		}
 		System.out.println("Done reading rawMipmaps");
+		System.out.println("Time: " + LocalDateTime.now());
 
 		final int numProc = Runtime.getRuntime().availableProcessors();
 		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
@@ -224,6 +246,7 @@ public class NailFlat implements Callable<Void> {
 
 		DoubleType minMean = SemaUtils.getAvgValue(min);
 		DoubleType maxMean = SemaUtils.getAvgValue(max);
+		// TODO revisit caching these on initial import
 
 		/* range/heightmap visualization */
 		final IntervalView<DoubleType> zRange = Views.interval(
@@ -326,6 +349,8 @@ public class NailFlat implements Callable<Void> {
 
 		// Trigger the first computation of the flatten transform
 		bw.restimateTransformation(true);
+
+		System.out.println("Time: " + LocalDateTime.now());
 
 		System.out.println("\nAdditional usage instructions:");
 		System.out.println("f - Apply flatten transform using existing nails");
