@@ -3567,6 +3567,7 @@ public class BigWarp< T >
 
                         DoubleType minMean = SemaUtils.getAvgValue(bw.minHeightmap);
                         DoubleType maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
+                        // TODO maybe always read from cache
                         System.out.println("minY is " +  minMean.get() + " and maxY is " + maxMean.get());
 
 						final FlattenTransform ft = new FlattenTransform(

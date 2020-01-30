@@ -165,6 +165,9 @@ public class NailFlat implements Callable<Void> {
 			N5FSWriter n5w = new N5FSWriter(n5Path);
 			N5Utils.save(minConv, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new RawCompression(), exec);
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
+
+			DoubleType minMean = SemaUtils.getAvgValue(min);
+			n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", minMean);
 		}
 		System.out.println("Time: " + LocalDateTime.now());
 
@@ -184,8 +187,14 @@ public class NailFlat implements Callable<Void> {
 			N5FSWriter n5w = new N5FSWriter(n5Path);
 			N5Utils.save(maxConv, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression(), exec);
 			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
+
+			DoubleType maxMean = SemaUtils.getAvgValue(max);
+			n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", maxMean);
 		}
 		System.out.println("Time: " + LocalDateTime.now());
+
+		System.out.println("Min heightmap: " + min.dimension(0) + " " + min.dimension(1) + " " + min.dimension(2));
+		System.out.println("Max heightmap: " + max.dimension(0) + " " + max.dimension(1) + " " + max.dimension(2));
 
 		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
@@ -227,6 +236,9 @@ public class NailFlat implements Callable<Void> {
 		System.out.println("Done reading rawMipmaps");
 		System.out.println("Time: " + LocalDateTime.now());
 
+		System.out.println("rawMipmaps[0]: " + rawMipmaps[0].dimension(0) + " " + rawMipmaps[0].dimension(1) + " " + rawMipmaps[0].dimension(2));
+		System.out.println("costMipmaps[0]: " + costMipmaps[0].dimension(0) + " " + costMipmaps[0].dimension(1) + " " + costMipmaps[0].dimension(2));
+
 		final int numProc = Runtime.getRuntime().availableProcessors();
 		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
 
@@ -244,9 +256,10 @@ public class NailFlat implements Callable<Void> {
             new long[] {0, 0, 0},
             new long[] {dimensions[0] - 1, dimensions[2] - 1, dimensions[1] -1});// FIXME double check this dimension swap, it came from saalfeld's hot-knife ViewFlattened
 
-		DoubleType minMean = SemaUtils.getAvgValue(min);
-		DoubleType maxMean = SemaUtils.getAvgValue(max);
-		// TODO revisit caching these on initial import
+		DoubleType minMean = n5.getAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", DoubleType.class);
+		if( minMean == null ) minMean = SemaUtils.getAvgValue(min);
+		DoubleType maxMean = n5.getAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", DoubleType.class);
+		if( maxMean == null ) maxMean = SemaUtils.getAvgValue(max);
 
 		/* range/heightmap visualization */
 		final IntervalView<DoubleType> zRange = Views.interval(
