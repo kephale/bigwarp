@@ -3454,6 +3454,7 @@ public class BigWarp< T >
 							System.out.println("Min: " + regionMin[0] + " " + regionMin[1] + " " + regionMin[2]);
 							System.out.println("Max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
+							// TODO: Use RA-Op instead of RAI op
 							double[] smoothingSigmas = new double[]{2, 2, 0};
 							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
 
@@ -3473,19 +3474,19 @@ public class BigWarp< T >
 							// Fetch the known cost data
 
 							// Get the offset of the cost region
-							long[] costMin = new long[3];
-							costRegion.min(costMin);
+							//long[] costMin = regionMin.clone();//new long[3];
+							//costRegion.min(costMin);
 
 							// sampledCost will be used for nail placement, nail borders, and solving the graphcut
-							RandomAccessibleInterval<DoubleType> sampledCost = Views.translate(Views.subsample(costRegion, costStep, costStep, 1), costMin);
+							RandomAccessibleInterval<DoubleType> sampledCost = Views.translate(Views.subsample(costRegion, costStep, costStep, 1), regionMin );///costStep); //costMin);
 							// Now sampledCost is downscaled along Y, but has the correct origin
 
 							RandomAccessibleInterval<DoubleType> smoothedCost = sampledCost;
 							//RandomAccessibleInterval<DoubleType> smoothedCost = bw.imagej.op().filter().gauss(sampledCost, 2, 2, 0);
 
 							// Create a new RAI and copy the cost region
-							//RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) sampledCost);
-							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) smoothedCost);
+							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) sampledCost);
+							//RandomAccessibleInterval<DoubleType> nailRegion = ArrayImgs.doubles(Intervals.dimensionsAsLongArray(smoothedCost));//.img((Interval) smoothedCost);
 							net.imglib2.Cursor<DoubleType> nrCursor = Views.flatIterable(nailRegion).cursor();
 							net.imglib2.Cursor<DoubleType> sourceCursor = Views.flatIterable(smoothedCost).cursor();
 							while (sourceCursor.hasNext()) {
@@ -3534,7 +3535,7 @@ public class BigWarp< T >
 							//RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), offset, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
 							// TODO check, disabled offset
 							//heightScaleFactor = ((float)originalDimX) / ((float)img.dimension(0));
-							RandomAccessibleInterval<DoubleType> doubleHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), 0, costRegion.dimension(0) + costStep - 1, costRegion.dimension(1) + costStep - 1,  bw.imagej.op(), 1);
+							RandomAccessibleInterval<DoubleType> doubleHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), costStep);
 
 
 							ImageJFunctions.wrap(doubleHeightmap,"heightmap").show();
@@ -3558,7 +3559,7 @@ public class BigWarp< T >
 								patchCursor.fwd();
 								hmCursor.fwd();
 								// TODO check, added offset here
-								hmCursor.get().set(patchCursor.get().get() + offset);
+								hmCursor.get().set(patchCursor.get().get() + offset - 1);
 							}
 							System.out.println("Heightmap has been patched");
 						}
@@ -3720,7 +3721,7 @@ public class BigWarp< T >
                 // Apply along max Y boundary
                 crPos[1] = costRegion.max(1);
                 // just use dimension instead of this max-min
-                hmPos[1] = costRegion.min(1) + costRegion.dimension(1) * costStep;
+                hmPos[1] = costRegion.min(1) + ( costRegion.dimension(1) - 1 ) * costStep;
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(hmPos);
                 hmVal = hmAccess.get().getRealDouble();
@@ -3753,7 +3754,7 @@ public class BigWarp< T >
 
                 // Apply along max X boundary
                 crPos[0] = costRegion.max(0);
-                hmPos[0] = costRegion.min(0) + costRegion.dimension(0) * costStep;
+                hmPos[0] = costRegion.min(0) + ( costRegion.dimension(0) - 1 ) * costStep;
                 //hmPos[0] = crPos[0];
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(hmPos);
