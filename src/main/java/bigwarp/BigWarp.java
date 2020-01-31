@@ -3568,14 +3568,14 @@ public class BigWarp< T >
 
 						N5FSReader n5 = new N5FSReader(bw.n5Path);
 
-                        DoubleType minMean = n5.getAttribute(bw.flattenDataset + BigWarp.minFaceDatasetName, "mean", DoubleType.class);
-						if( minMean == null ) minMean = SemaUtils.getAvgValue(bw.minHeightmap);
-						DoubleType maxMean = n5.getAttribute(bw.flattenDataset + BigWarp.maxFaceDatasetName, "mean", DoubleType.class);
-						if( maxMean == null ) maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
+                        double minMean = n5.getAttribute(bw.flattenDataset + BigWarp.minFaceDatasetName, "mean", double.class);
+						//if( minMean == null ) minMean = SemaUtils.getAvgValue(bw.minHeightmap);
+						double maxMean = n5.getAttribute(bw.flattenDataset + BigWarp.maxFaceDatasetName, "mean", double.class);
+						//if( maxMean == null ) maxMean = SemaUtils.getAvgValue(bw.maxHeightmap);
 
 
                         // TODO maybe always read from cache
-                        System.out.println("minY is " +  minMean.get() + " and maxY is " + maxMean.get());
+                        System.out.println("minY is " +  minMean + " and maxY is " + maxMean);
 
 						final FlattenTransform ft = new FlattenTransform(
 								RealViews.affine(
@@ -3588,8 +3588,8 @@ public class BigWarp< T >
 												Views.extendBorder(bw.maxHeightmap),
 												new NLinearInterpolatorFactory<>()),
 										transformScale),
-								minMean.get(),
-								maxMean.get());
+								minMean,
+								maxMean);
 
                         bw.currentTransform = ft;
 						//bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement

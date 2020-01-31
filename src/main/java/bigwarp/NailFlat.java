@@ -172,7 +172,7 @@ public class NailFlat implements Callable<Void> {
 			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
 
 			DoubleType minMean = SemaUtils.getAvgValue(min);
-			n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", minMean);
+			n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", minMean.getRealDouble());
 		}
 		System.out.println("Time: " + LocalDateTime.now());
 
@@ -194,7 +194,7 @@ public class NailFlat implements Callable<Void> {
 			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
 
 			DoubleType maxMean = SemaUtils.getAvgValue(max);
-			n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", maxMean);
+			n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", maxMean.getRealDouble());
 		}
 		System.out.println("Time: " + LocalDateTime.now());
 
@@ -262,16 +262,16 @@ public class NailFlat implements Callable<Void> {
             new long[] {0, 0, 0},
             new long[] {dimensions[0] - 1, dimensions[2] - 1, dimensions[1] -1});// FIXME double check this dimension swap, it came from saalfeld's hot-knife ViewFlattened
 
-		DoubleType minMean = n5.getAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", DoubleType.class);
-		if( minMean == null ) minMean = SemaUtils.getAvgValue(min);
-		DoubleType maxMean = n5.getAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", DoubleType.class);
-		if( maxMean == null ) maxMean = SemaUtils.getAvgValue(max);
+		double minMean = n5.getAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", double.class);
+		//if( Double.isNaN(minMean) ) minMean = SemaUtils.getAvgValue(min).getRealDouble();
+		double maxMean = n5.getAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", double.class);
+		//if( Double.isNaN(maxMean) ) maxMean = SemaUtils.getAvgValue(max).getRealDouble();
 
 		/* range/heightmap visualization */
 		final IntervalView<DoubleType> zRange = Views.interval(
-				zRange(minMean.get(), maxMean.get(), 255, 1),
-				new long[]{0, 0, Math.round(minMean.get()) - padding},
-				new long[]{rawMipmaps[0].dimension(0), rawMipmaps[0].dimension(2), Math.round(maxMean.get()) + padding});
+				zRange(minMean, maxMean, 255, 1),
+				new long[]{0, 0, Math.round(minMean) - padding},
+				new long[]{rawMipmaps[0].dimension(0), rawMipmaps[0].dimension(2), Math.round(maxMean) + padding});
 
 		final Interval zCropInterval = zRange;
 
@@ -292,8 +292,8 @@ public class NailFlat implements Callable<Void> {
 												Views.extendBorder(max),
 												new NLinearInterpolatorFactory<>()),
 										transformScale),
-								minMean.get(),
-								maxMean.get());
+								minMean,
+								maxMean);
 
 		final RandomAccessibleInterval<DoubleType> heightmapRai =
 				Transform.createTransformedInterval(
