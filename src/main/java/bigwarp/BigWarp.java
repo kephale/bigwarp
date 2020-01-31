@@ -3535,14 +3535,14 @@ public class BigWarp< T >
 							// TODO check, disabled offset
 							//heightScaleFactor = ((float)originalDimX) / ((float)img.dimension(0));
 							RandomAccessibleInterval<DoubleType> doubleHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), 0, costRegion.dimension(0) + costStep - 1, costRegion.dimension(1) + costStep - 1,  bw.imagej.op(), 1);
+							RandomAccessibleInterval<DoubleType> trimmedDoubleHeightmap = Views.interval(doubleHeightmap, new long[]{doubleHeightmap.min(0), doubleHeightmap.min(1)}, new long[]{costRegion.dimension(0) - 1, costRegion.dimension(1) - 1});
 
-
-							ImageJFunctions.wrap(doubleHeightmap,"heightmap").show();
+							ImageJFunctions.wrap(trimmedDoubleHeightmap,"heightmap").show();
 
 							System.out.println("Graphcut done took: " + (System.nanoTime() - startTime));
 
 							// Convert to double *and* undo the zeroMin offset *and* undo height offset
-							RandomAccessibleInterval<DoubleType> heightmapPatch = Views.translate( doubleHeightmap, costRegion.min(0), costRegion.min(1));
+							RandomAccessibleInterval<DoubleType> heightmapPatch = Views.translate( trimmedDoubleHeightmap, costRegion.min(0), costRegion.min(1));
 
 							System.out.println("Patching heightmap at: ");
 							System.out.println("Min: " + heightmapPatch.min(0) + " " + heightmapPatch.min(1));
@@ -3551,6 +3551,8 @@ public class BigWarp< T >
 							System.out.println("Previous patch average value: " + SemaUtils.getAvgValue(Views.interval(heightmap, heightmapPatch)));
 							System.out.println("Replacement patch average value: " + SemaUtils.getAvgValue(heightmapPatch));
 
+							ImageJFunctions.show(Views.interval(heightmap, heightmapPatch), "previous hm");
+
 							// Copy the patch into the heightmap
 							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, heightmapPatch)).cursor();
 							net.imglib2.Cursor<DoubleType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
@@ -3558,9 +3560,14 @@ public class BigWarp< T >
 								patchCursor.fwd();
 								hmCursor.fwd();
 								// TODO check, added offset here
-								hmCursor.get().set(patchCursor.get().get() + offset);
+
+
+								hmCursor.get().set(patchCursor.get().get() + offset );
 							}
 							System.out.println("Heightmap has been patched");
+
+							ImageJFunctions.show(Views.interval(heightmap, new long[]{costRegion.min(0) - 10, costRegion.min(1) - 10},
+									new long[]{costRegion.max(0) + 10, costRegion.max(1) + 10}), "extended HM");
 						}
 
 						// Now export the results to our flatten dataset in the n5
