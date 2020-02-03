@@ -11,6 +11,7 @@ import javax.swing.JTable;
 import javax.swing.KeyStroke;
 import javax.swing.table.TableCellEditor;
 
+import ij.gui.GenericDialog;
 import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
@@ -1132,6 +1133,15 @@ public class BigWarpActions
 		public void actionPerformed(ActionEvent e)
 		{
 			System.out.println("Solving and applying flatten transform");
+
+			GenericDialog gd = new GenericDialog("Flatten dialog");
+			gd.addNumericField("Smoothing constraint:", 5);
+			gd.addNumericField("X/Y padding radius:", 100);
+
+			if (gd.wasCanceled()) return;
+			bw.setSmoothingConstraint((int) gd.getNextNumber());
+			bw.setPaddingXY((int) gd.getNextNumber());
+
 			bw.restimateTransformation(true);
 		}
 	}

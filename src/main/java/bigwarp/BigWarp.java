@@ -335,7 +335,7 @@ public class BigWarp< T >
 	private static int costStep = 6;
 
 	private long flattenPadding = 2000;
-	private long nailPadding = costStep * 10;
+	//private long nailPadding = costStep * 10;
 	//private long nailPadding = 20;
 	private net.imagej.ImageJ imagej;
 
@@ -2317,6 +2317,14 @@ public class BigWarp< T >
 		this.costStepData = costStep;
 	}
 
+	public void setSmoothingConstraint(int v) {
+		solverThread.setConstraint(v);
+	}
+
+	public void setPaddingXY(int v) {
+		solverThread.setPaddingXY(v);
+	}
+
 	public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
@@ -3386,6 +3394,8 @@ public class BigWarp< T >
 		private int index;
 
 		private double[] pt;
+		private int smoothingConstraint;
+		private int paddingXY;
 
 		public SolveThread( final BigWarp<?> bw )
 		{
@@ -3429,15 +3439,33 @@ public class BigWarp< T >
 							// Find the region boundary around *all* nails
 							long[] regionMin = new long[]{dimensions[0] - 1, dimensions[1] - 1, dimensions[2] - 1};
 							long[] regionMax = new long[]{0, 0, 0};
+
+							int paddingZ = paddingXY;
+
+							long[] nailPadding = new long[]{paddingXY, paddingXY, paddingZ};
+
+							RandomAccess<DoubleType> hmMinAccess = bw.minHeightmap.randomAccess();
+							RandomAccess<DoubleType> hmMaxAccess = bw.maxHeightmap.randomAccess();
+
+							long[] hmPos = new long[2];
+
 							for (int k = 0; k < nails.size(); k++) {
 
 								long[] nail = new long[]{nails.get(k)[0].longValue(), nails.get(k)[1].longValue(), nails.get(k)[2].longValue()};
 
 								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
 
+								hmPos[0] = nail[0];
+								hmPos[1] = nail[1];
+								hmMinAccess.setPosition(hmPos);
+								double hmMinZ = hmMinAccess.get().get();
+								double hmMaxZ = hmMaxAccess.get().get();
+
+								nailPadding[2] = (long) (Math.min( nail[2] - hmMinZ, nail[2] - hmMaxZ ) + 10);
+
 								for (int d = 0; d < nail.length; d++) {
-									regionMin[d] = (long) Math.min(regionMin[d], Math.max(nail[d] - bw.nailPadding, 0));
-									regionMax[d] = (long) Math.max(regionMax[d], Math.min(nail[d] + bw.nailPadding, dimensions[d] - 1));
+									regionMin[d] = Math.min(regionMin[d], Math.max(nail[d] - nailPadding[d], 0));
+									regionMax[d] = Math.max(regionMax[d], Math.min(nail[d] + nailPadding[d], dimensions[d] - 1));
 								}
 							}
 
@@ -3535,7 +3563,7 @@ public class BigWarp< T >
 							//RandomAccessibleInterval<IntType> intHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), offset, costRegion.dimension(0), costRegion.dimension(1), bw.imagej.op());
 							// TODO check, disabled offset
 							//heightScaleFactor = ((float)originalDimX) / ((float)img.dimension(0));
-							RandomAccessibleInterval<DoubleType> doubleHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), costStep);
+							RandomAccessibleInterval<DoubleType> doubleHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), costStep, smoothingConstraint);
 
 
 							ImageJFunctions.wrap(doubleHeightmap,"heightmap").show();
@@ -3683,7 +3711,14 @@ public class BigWarp< T >
 				notify();
 			}
 		}
-		
+
+		public void setConstraint(int v) {
+			this.smoothingConstraint = v;
+		}
+
+		public void setPaddingXY(int v) {
+			this.paddingXY = v;
+		}
 	}
 
 	/**
