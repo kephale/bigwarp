@@ -119,8 +119,8 @@ public class NailFlat implements Callable<Void> {
 			args = new String[]{
 			        "-i", "/nrs/flyem/tmp/VNC.n5",
 					"-d", "/zcorr/Sec22___20200106_083252",
-					"-f", "/flatten/Sec22___20200113_kyle002",
-					"-s", "/cost/Sec22___20200110_160724",
+					"-f", "/flatten/Sec22_kyle003",
+					"-s", "/cost/Sec22_step6_v01",
 //					"-u"
 					"--min", "/flatten/Sec22_original/heightmaps/min",
 					"--max", "/flatten/Sec22_original/heightmaps/max"
@@ -163,10 +163,13 @@ public class NailFlat implements Callable<Void> {
 
 		System.out.println("Start time: " + LocalDateTime.now());
 
+		double minMean, maxMean;
+
 		// Min heightmap: Load from N5 if possible
 		if( minDataset != null && n5.exists(minDataset) ) {
 			System.out.println("Loading min face from N5 " + minDataset);
 			min = N5Utils.open(n5, minDataset);
+			minMean = n5.getAttribute(minDataset, "mean", double.class);
 		} else {
 		    System.out.println("Min heightmap is missing from: " + minDataset );
 		    throw new Exception("Missing heightmap");
@@ -177,6 +180,7 @@ public class NailFlat implements Callable<Void> {
 		if( maxDataset != null && n5.exists(maxDataset) ) {
 			System.out.println("Loading max face from N5 " + maxDataset);
 			max = N5Utils.open(n5, maxDataset);
+			maxMean = n5.getAttribute(maxDataset, "mean", double.class);
 		}  else {
 		    System.out.println("Max heightmap is missing from: " + maxDataset );
 		    throw new Exception("Missing heightmap");
@@ -185,6 +189,14 @@ public class NailFlat implements Callable<Void> {
 
 		System.out.println("Min heightmap: " + min.dimension(0) + " " + min.dimension(1) + " " + min.dimension(2));
 		System.out.println("Max heightmap: " + max.dimension(0) + " " + max.dimension(1) + " " + max.dimension(2));
+
+		// Setup the flatten dataset
+		N5FSWriter n5w = new N5FSWriter(n5Path);
+		N5Utils.save(min, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
+		n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", minMean);
+
+		N5Utils.save(max, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
+		n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", maxMean);
 
 		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
@@ -247,9 +259,6 @@ public class NailFlat implements Callable<Void> {
             new long[] {0, 0, 0},
             new long[] {dimensions[0] - 1, dimensions[2] - 1, dimensions[1] -1});// FIXME double check this dimension swap, it came from saalfeld's hot-knife ViewFlattened
 
-		double minMean = n5.getAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", double.class);
-		double maxMean = n5.getAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", double.class);
-
 		/* range/heightmap visualization */
 		final IntervalView<DoubleType> zRange = Views.interval(
 				zRange(minMean, maxMean, 255, 1),
@@ -303,7 +312,7 @@ public class NailFlat implements Callable<Void> {
 
 		new ImageJ();// FIXME debugging
 
-		Source<?> costSource = makeCostSource(costMipmaps, scales, voxelDimensions, inputDataset, sourceInterval, useVolatile, null, queue);
+		//Source<?> costSource = makeCostSource(costMipmaps, scales, voxelDimensions, inputDataset, sourceInterval, useVolatile, null, queue);
 
 		BigWarp.BigWarpData bwData = BigWarpInit.createBigWarpData(new Source[]{fAndO[0]},
                                                                    new Source[]{fAndO[1], heightmapOverlay},
