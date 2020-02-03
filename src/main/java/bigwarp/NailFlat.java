@@ -106,15 +106,25 @@ public class NailFlat implements Callable<Void> {
 
 	public static final void main(String... args) {
 		if( args.length == 0 )
-			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5",
-					"-d", "/zcorr/Sec06___20200130_110551",
-					"-f", "/flatten/Sec06___20200130_110551_kyle001",
-					"-s", "/cost/Sec06___20200130",
-					"-u"
-//					"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec06/Sec06-bottom.h5",
-//					"--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec06/Sec06-top.h5"
-					};
+//			args = new String[]{
+//			        "-i", "/nrs/flyem/tmp/VNC.n5",
+//					"-d", "/zcorr/Sec06___20200130_110551",
+//					"-f", "/flatten/Sec06___20200130_110551_kyle001",
+//					"-s", "/cost/Sec06___20200130",
+////					"-u"
+//					"--min", "/flatten/Sec06_original/heightmaps/min",
+//					"--max", "/flatten/Sec06_original/heightmaps/max"
+//					};
 			// these args for Sec22 were used for initial testing
+			args = new String[]{
+			        "-i", "/nrs/flyem/tmp/VNC.n5",
+					"-d", "/zcorr/Sec22___20200106_083252",
+					"-f", "/flatten/Sec22___20200113_kyle002",
+					"-s", "/cost/Sec22___20200110_160724",
+//					"-u"
+					"--min", "/flatten/Sec22_original/heightmaps/min",
+					"--max", "/flatten/Sec22_original/heightmaps/max"
+					};
 //			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5",
 //					"-d", "/zcorr/Sec22___20200106_083252",
 //					"-f", "/flatten/Sec22___20200113_kyle002",
@@ -132,7 +142,7 @@ public class NailFlat implements Callable<Void> {
 	}
 
 	@Override
-	public final Void call() throws IOException, SpimDataException, ExecutionException, InterruptedException {
+	public final Void call() throws Exception {
 		net.imagej.ImageJ imagej = new net.imagej.ImageJ();
 		final N5FSReader n5 = new N5FSReader(n5Path);
 
@@ -151,51 +161,26 @@ public class NailFlat implements Callable<Void> {
 
 		ExecutorService exec = Executors.newFixedThreadPool(8);
 
-
 		System.out.println("Start time: " + LocalDateTime.now());
 
 		// Min heightmap: Load from N5 if possible
 		if( minDataset != null && n5.exists(minDataset) ) {
 			System.out.println("Loading min face from N5 " + minDataset);
 			min = N5Utils.open(n5, minDataset);
-		} else if( minDataset != null && new File(minDataset).exists() ) {
-			// If there is no minDataset, then assume this is an HDF5
-			System.out.println("Loading min face from HDF5");
-			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(minDataset);
-			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[]{128, 128, 128});
-			final RandomAccessibleInterval<FloatType> floats = N5Utils.openVolatile(hdf5, "/volume");
-			RandomAccessibleInterval<DoubleType> minConv = Converters.convert(floats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-
-			// Using an HDF5 RAI can be slow when computing transforms, write to N5 and use that
-			N5FSWriter n5w = new N5FSWriter(n5Path);
-			N5Utils.save(minConv, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new RawCompression(), exec);
-			min = N5Utils.open(n5, flattenDataset + BigWarp.minFaceDatasetName);
-
-			DoubleType minMean = SemaUtils.getAvgValue(min);
-			n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", minMean.getRealDouble());
-		}
+		} else {
+		    System.out.println("Min heightmap is missing from: " + minDataset );
+		    throw new Exception("Missing heightmap");
+        }
 		System.out.println("Time: " + LocalDateTime.now());
 
 		// Min heightmap: Load from N5 if possible
 		if( maxDataset != null && n5.exists(maxDataset) ) {
 			System.out.println("Loading max face from N5 " + maxDataset);
 			max = N5Utils.open(n5, maxDataset);
-		} else if(  maxDataset != null && new File(maxDataset).exists() ) {
-			// If there is no maxDataset, then assume this is an HDF5
-			System.out.println("Loading max face from HDF5");
-			final IHDF5Reader hdf5Reader = HDF5Factory.openForReading(maxDataset);
-			final N5HDF5Reader hdf5 = new N5HDF5Reader(hdf5Reader, new int[]{128, 128, 128});
-			final RandomAccessibleInterval<FloatType> floats = N5Utils.openVolatile(hdf5, "/volume");
-			RandomAccessibleInterval<DoubleType> maxConv = Converters.convert(floats, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-
-			// Using an HDF5 RAI can be slow when computing transforms, write to N5 and use that
-			N5FSWriter n5w = new N5FSWriter(n5Path);
-			N5Utils.save(maxConv, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression(), exec);
-			max = N5Utils.open(n5, flattenDataset + BigWarp.maxFaceDatasetName);
-
-			DoubleType maxMean = SemaUtils.getAvgValue(max);
-			n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", maxMean.getRealDouble());
-		}
+		}  else {
+		    System.out.println("Max heightmap is missing from: " + maxDataset );
+		    throw new Exception("Missing heightmap");
+        }
 		System.out.println("Time: " + LocalDateTime.now());
 
 		System.out.println("Min heightmap: " + min.dimension(0) + " " + min.dimension(1) + " " + min.dimension(2));
@@ -263,9 +248,7 @@ public class NailFlat implements Callable<Void> {
             new long[] {dimensions[0] - 1, dimensions[2] - 1, dimensions[1] -1});// FIXME double check this dimension swap, it came from saalfeld's hot-knife ViewFlattened
 
 		double minMean = n5.getAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", double.class);
-		//if( Double.isNaN(minMean) ) minMean = SemaUtils.getAvgValue(min).getRealDouble();
 		double maxMean = n5.getAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", double.class);
-		//if( Double.isNaN(maxMean) ) maxMean = SemaUtils.getAvgValue(max).getRealDouble();
 
 		/* range/heightmap visualization */
 		final IntervalView<DoubleType> zRange = Views.interval(
@@ -278,8 +261,8 @@ public class NailFlat implements Callable<Void> {
 		// TODO: Height maps contain NaN's and sometimes strong negative numbers
 		//ImageJFunctions.show(min);
 
-		double transformScaleX = 1;
-		double transformScaleY = 1;
+		double transformScaleX = 6;
+		double transformScaleY = 6;
 		final Scale2D transformScale = new Scale2D(transformScaleX, transformScaleY);
 		final FlattenTransform ft = new FlattenTransform(
 								RealViews.affine(

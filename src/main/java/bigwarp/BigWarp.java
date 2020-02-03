@@ -326,8 +326,8 @@ public class BigWarp< T >
 	private File movingImageXml;
 
 	// SEMA additions
-	double transformScaleX = 1;
-	double transformScaleY = 1;
+	double transformScaleX = 6;
+	double transformScaleY = transformScaleX;
 
 	private static double nailReward = -100000;//Double.MIN_VALUE;// only used for the manually placed nail, not border
 	private static double nailPenalty = 10000;//Double.MAX_VALUE;
@@ -3444,8 +3444,6 @@ public class BigWarp< T >
 							// Find the region boundary around *all* nails
 							long[] regionMin = new long[]{dimensions[0] - 1, dimensions[1] - 1, dimensions[2] - 1};
 							long[] regionMax = new long[]{0, 0, 0};
-
-
 
 							long[] nailPadding = new long[]{paddingXY, paddingXY, paddingZ};
 
