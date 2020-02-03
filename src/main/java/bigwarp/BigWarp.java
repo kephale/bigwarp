@@ -3432,7 +3432,7 @@ public class BigWarp< T >
 						RandomAccessibleInterval<DoubleType> costImg =
 								Views.subsample(
 									Views.permute(bw.getCostImg(), 1, 2),
-									6,1,1);
+									costStep,1,1);
 
 						long[] dimensions = new long[3];
 						costImg.dimensions(dimensions);

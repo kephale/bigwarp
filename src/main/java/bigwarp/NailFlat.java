@@ -106,25 +106,25 @@ public class NailFlat implements Callable<Void> {
 
 	public static final void main(String... args) {
 		if( args.length == 0 )
-//			args = new String[]{
-//			        "-i", "/nrs/flyem/tmp/VNC.n5",
-//					"-d", "/zcorr/Sec06___20200130_110551",
-//					"-f", "/flatten/Sec06___20200130_110551_kyle001",
-//					"-s", "/cost/Sec06___20200130",
-////					"-u"
-//					"--min", "/flatten/Sec06_original/heightmaps/min",
-//					"--max", "/flatten/Sec06_original/heightmaps/max"
-//					};
-			// these args for Sec22 were used for initial testing
 			args = new String[]{
 			        "-i", "/nrs/flyem/tmp/VNC.n5",
-					"-d", "/zcorr/Sec22___20200106_083252",
-					"-f", "/flatten/Sec22_kyle003",
-					"-s", "/cost/Sec22_step6_v01",
+					"-d", "/zcorr/Sec06___20200130_110551",
+					"-f", "/flatten/Sec06___20200130_110551_kyle001",
+					"-s", "/cost/Sec06___20200130",
 //					"-u"
-					"--min", "/flatten/Sec22_original/heightmaps/min",
-					"--max", "/flatten/Sec22_original/heightmaps/max"
+					"--min", "/flatten/Sec06_original/heightmaps/min",
+					"--max", "/flatten/Sec06_original/heightmaps/max"
 					};
+			// these args for Sec22 were used for initial testing
+//			args = new String[]{
+//			        "-i", "/nrs/flyem/tmp/VNC.n5",
+//					"-d", "/zcorr/Sec22___20200106_083252",
+//					"-f", "/flatten/Sec22_kyle003",
+//					"-s", "/cost/Sec22_step6_v01",
+////					"-u"
+//					"--min", "/flatten/Sec22_original/heightmaps/min",
+//					"--max", "/flatten/Sec22_original/heightmaps/max"
+//					};
 //			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5",
 //					"-d", "/zcorr/Sec22___20200106_083252",
 //					"-f", "/flatten/Sec22___20200113_kyle002",
