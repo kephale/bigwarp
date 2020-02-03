@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
 import javax.swing.ActionMap;
@@ -45,6 +47,7 @@ import net.imagej.ops.OpService;
 import net.imglib2.*;
 import net.imglib2.RandomAccess;
 import net.imglib2.algorithm.gauss3.Gauss3;
+import net.imglib2.algorithm.gauss3.SeparableSymmetricConvolution;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.converter.Converters;
 import net.imglib2.img.Img;
@@ -3463,8 +3466,6 @@ public class BigWarp< T >
 							RandomAccess<DoubleType> hmMinAccess = bw.minHeightmap.randomAccess();
 							RandomAccess<DoubleType> hmMaxAccess = bw.maxHeightmap.randomAccess();
 
-							long[] hmPos = new long[2];
-
 							for (int k = 0; k < nails.size(); k++) {
 
 								long[] nail = new long[]{
@@ -3474,16 +3475,16 @@ public class BigWarp< T >
 
 								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
 
-								hmPos[0] = nail[0];
-								hmPos[1] = nail[1];
-								hmMinAccess.setPosition(hmPos);
+								hmMinAccess.setPosition(nail);
 								double hmMinZ = hmMinAccess.get().get();
 								double hmMaxZ = hmMaxAccess.get().get();
+
+								// The heightmap can contain NaN and Infinite, if so, then use the mean as our best guess
 								hmMinZ = ( Double.isNaN(hmMinZ) || Double.isInfinite(hmMinZ) ? minMean : hmMinZ );
 								hmMaxZ = ( Double.isNaN(hmMaxZ) || Double.isInfinite(hmMaxZ) ? maxMean : hmMaxZ );
 
 								if( paddingZ < 0 )
-									nailPadding[2] = (long) (Math.min( hmMinZ - nail[2], hmMaxZ - nail[2] ) + 25); // FIXME ad hoc padding
+									nailPadding[2] = (long) (Math.min( hmMinZ - nail[2], hmMaxZ - nail[2] ) + 10); // FIXME ad hoc padding
 								else
 									nailPadding[2] = paddingZ;
 
@@ -3498,20 +3499,22 @@ public class BigWarp< T >
 							System.out.println("Max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
 							// TODO: Use RA-Op instead of RAI op
-							double[] smoothingSigmas = new double[]{1, 1, 0};
-							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
+//							double[] smoothingSigmas = new double[]{1, 1, 0};
+//							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
+//
+//							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
+//							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
+//
+//							// grab a larger cost region
+//							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
+//
+//							// smooth larger region
+//							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
+//
+//							// crop interior
+//							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
 
-							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
-							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
-
-							// grab a larger cost region
-							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
-
-							// smooth larger region
-							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
-
-							// crop interior
-							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
+                            RandomAccessibleInterval<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
 
 							// Create a new RAI and copy the cost region
 							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) costRegion);
@@ -3583,6 +3586,28 @@ public class BigWarp< T >
 								hmCursor.fwd();
 								hmCursor.get().set(patchCursor.get().get() + offset - 1);
 							}
+
+							ImageJFunctions.wrap(Views.interval(heightmap, heightmapPatch),"patched offset HM").show();
+
+							// Run a gaussian on the patch using the patched heightmap (NEEDS TO BE DEBUGGED)
+							double[] hmSigmas = new double[]{5, 5};
+							//int[] hmhks = Gauss3.halfkernelsizes(hmSigmas);
+                            ExecutorService exec = Executors.newFixedThreadPool(32);
+
+                            RandomAccessibleInterval<DoubleType> smoothPatch = bw.imagej.op().create().img((Interval) heightmapPatch);
+							SeparableSymmetricConvolution.convolve(Gauss3.halfkernels(hmSigmas), heightmap, smoothPatch, exec);
+
+							// Copy the gaussian result back into the heightmap
+							hmCursor = Views.flatIterable(Views.interval(heightmap, smoothPatch)).cursor();
+							patchCursor = Views.flatIterable(smoothPatch).cursor();
+							while (patchCursor.hasNext()) {
+								patchCursor.fwd();
+								hmCursor.fwd();
+								hmCursor.get().set(patchCursor.get().get());
+							}
+
+							ImageJFunctions.wrap(Views.interval(heightmap, smoothPatch),"patched smoothed HM").show();
+
 							System.out.println("Heightmap has been patched");
 						}
 

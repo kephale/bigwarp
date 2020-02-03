@@ -110,7 +110,7 @@ public class NailFlat implements Callable<Void> {
 			        "-i", "/nrs/flyem/tmp/VNC.n5",
 					"-d", "/zcorr/Sec06___20200130_110551",
 					"-f", "/flatten/Sec06___20200130_110551_kyle001",
-					"-s", "/cost/Sec06___20200130",
+					"-s", "/cost/Sec06_step6_v01",
 //					"-u"
 					"--min", "/flatten/Sec06_original/heightmaps/min",
 					"--max", "/flatten/Sec06_original/heightmaps/max"
