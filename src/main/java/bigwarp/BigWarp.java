@@ -2325,6 +2325,10 @@ public class BigWarp< T >
 		solverThread.setPaddingXY(v);
 	}
 
+	public void setPaddingZ(int v) {
+		solverThread.setPaddingZ(v);
+	}
+
 	public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
@@ -3396,6 +3400,7 @@ public class BigWarp< T >
 		private double[] pt;
 		private int smoothingConstraint;
 		private int paddingXY;
+		private int paddingZ = -1;
 
 		public SolveThread( final BigWarp<?> bw )
 		{
@@ -3440,7 +3445,7 @@ public class BigWarp< T >
 							long[] regionMin = new long[]{dimensions[0] - 1, dimensions[1] - 1, dimensions[2] - 1};
 							long[] regionMax = new long[]{0, 0, 0};
 
-							int paddingZ = paddingXY;
+
 
 							long[] nailPadding = new long[]{paddingXY, paddingXY, paddingZ};
 
@@ -3461,7 +3466,10 @@ public class BigWarp< T >
 								double hmMinZ = hmMinAccess.get().get();
 								double hmMaxZ = hmMaxAccess.get().get();
 
-								nailPadding[2] = (long) (Math.min( nail[2] - hmMinZ, nail[2] - hmMaxZ ) + 10);
+								if( paddingZ < 0 )
+									nailPadding[2] = (long) (Math.min( nail[2] - hmMinZ, nail[2] - hmMaxZ ) + 10);
+								else
+									nailPadding[2] = paddingZ;
 
 								for (int d = 0; d < nail.length; d++) {
 									regionMin[d] = Math.min(regionMin[d], Math.max(nail[d] - nailPadding[d], 0));
@@ -3718,6 +3726,10 @@ public class BigWarp< T >
 
 		public void setPaddingXY(int v) {
 			this.paddingXY = v;
+		}
+
+		public void setPaddingZ(int v) {
+			this.paddingZ = v;
 		}
 	}
 

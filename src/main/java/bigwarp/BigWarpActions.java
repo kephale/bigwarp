@@ -26,6 +26,8 @@ import bigwarp.landmarks.LandmarkTableModel;
 import bigwarp.source.GridSource;
 import mpicbg.models.AbstractModel;
 
+import static bigwarp.BigWarpActions.AlignViewerPanelAction.TYPE.OTHER_TO_ACTIVE;
+
 public class BigWarpActions
 {
 	//public static final String TOGGLE_LANDMARK_MODE  = "toggle landmark mode";
@@ -148,7 +150,7 @@ public class BigWarpActions
 		map.put( String.format( VISIBILITY_AND_GROUPING, "target" ), "F7" );
 		map.put( String.format( VISIBILITY_AND_GROUPING, "transform type" ), "F8" );
 		
-		map.put( String.format( ALIGN_VIEW_TRANSFORMS, AlignViewerPanelAction.TYPE.OTHER_TO_ACTIVE ), "Q" );
+		map.put( String.format( ALIGN_VIEW_TRANSFORMS, OTHER_TO_ACTIVE ), "Q" );
 		map.put( String.format( ALIGN_VIEW_TRANSFORMS, AlignViewerPanelAction.TYPE.ACTIVE_TO_OTHER ), "W" );
 
 		map.put( TOGGLE_MOVING_IMAGE_DISPLAY, "T" );
@@ -189,7 +191,7 @@ public class BigWarpActions
 
 		new ResetActiveViewerAction( bw ).put( actionMap );
 		new AlignViewerPanelAction( bw, AlignViewerPanelAction.TYPE.ACTIVE_TO_OTHER ).put( actionMap );
-		new AlignViewerPanelAction( bw, AlignViewerPanelAction.TYPE.OTHER_TO_ACTIVE ).put( actionMap );
+		new AlignViewerPanelAction( bw, OTHER_TO_ACTIVE ).put( actionMap );
 		new WarpToSelectedAction( bw ).put( actionMap );
 		new WarpToNextAction( bw, true ).put( actionMap );
 		new WarpToNextAction( bw, false ).put( actionMap );
@@ -1137,10 +1139,13 @@ public class BigWarpActions
 			GenericDialog gd = new GenericDialog("Flatten dialog");
 			gd.addNumericField("Smoothing constraint:", 5);
 			gd.addNumericField("X/Y padding radius:", 100);
+			gd.addNumericField("Z padding radius (negative means autodetect):", -1);
+			gd.showDialog();
 
 			if (gd.wasCanceled()) return;
 			bw.setSmoothingConstraint((int) gd.getNextNumber());
 			bw.setPaddingXY((int) gd.getNextNumber());
+			bw.setPaddingZ((int) gd.getNextNumber());
 
 			bw.restimateTransformation(true);
 		}
