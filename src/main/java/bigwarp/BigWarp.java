@@ -3499,22 +3499,22 @@ public class BigWarp< T >
 							System.out.println("Max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
 							// TODO: Use RA-Op instead of RAI op
-//							double[] smoothingSigmas = new double[]{1, 1, 0};
-//							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
-//
-//							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
-//							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
-//
-//							// grab a larger cost region
-//							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
-//
-//							// smooth larger region
-//							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
-//
-//							// crop interior
-//							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
+							double[] smoothingSigmas = new double[]{1, 1, 0};
+							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
 
-                            RandomAccessibleInterval<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
+							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
+							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
+
+							// grab a larger cost region
+							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
+
+							// smooth larger region
+							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
+
+							// crop interior
+							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
+
+//                            RandomAccessibleInterval<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
 
 							// Create a new RAI and copy the cost region
 							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) costRegion);
@@ -3590,7 +3590,7 @@ public class BigWarp< T >
 							ImageJFunctions.wrap(Views.interval(heightmap, heightmapPatch),"patched offset HM").show();
 
 							// Run a gaussian on the patch using the patched heightmap (NEEDS TO BE DEBUGGED)
-							double[] hmSigmas = new double[]{5, 5};
+							double[] hmSigmas = new double[]{2, 2};
 							//int[] hmhks = Gauss3.halfkernelsizes(hmSigmas);
                             ExecutorService exec = Executors.newFixedThreadPool(32);
 
