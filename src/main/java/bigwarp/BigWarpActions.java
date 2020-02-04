@@ -1137,9 +1137,9 @@ public class BigWarpActions
 			System.out.println("Solving and applying flatten transform");
 
 			GenericDialog gd = new GenericDialog("Flatten dialog");
-			gd.addNumericField("Smoothing constraint:", 5);
-			gd.addNumericField("X/Y padding radius:", 100);
-			gd.addNumericField("Z padding radius (negative means autodetect):", -1);
+			gd.addNumericField("Smoothing constraint:", 5, 3);
+			gd.addNumericField("X/Y padding radius:", 100, 5);
+			gd.addNumericField("Z padding radius (negative means autodetect):", -1, 5);
 			gd.showDialog();
 
 			if (gd.wasCanceled()) return;
