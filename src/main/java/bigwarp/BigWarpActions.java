@@ -1121,6 +1121,13 @@ public class BigWarpActions
 		}
 	}
 
+	public static int maxDelta = 5;
+	public static double sigmaCost = 1;
+	public static double sigmaHeightmap = 2;
+	public static int xyPadding = 500;
+	public static int zPadding = -1;
+	public static boolean ignoreNailsWhenSolving = false;
+	
 	public static class ApplyFlattenAction extends AbstractNamedAction
 	{
 //		private static final long serialVersionUID = 4965249994677649713L;
@@ -1137,15 +1144,22 @@ public class BigWarpActions
 			System.out.println("Solving and applying flatten transform");
 
 			GenericDialog gd = new GenericDialog("Flatten dialog");
-			gd.addNumericField("Smoothing constraint:", 5, 3);
-			gd.addNumericField("X/Y padding radius:", 100, 5);
-			gd.addNumericField("Z padding radius (negative means autodetect):", -1, 5);
+			gd.addNumericField("Max delta (graph cut):", maxDelta, 0);
+			gd.addNumericField("Sigma Cost Function (on subsampled):", sigmaCost, 1);
+			gd.addNumericField("Sigma Heightmap (on subsampled):", sigmaHeightmap, 1);
+			gd.addNumericField("X/Y padding radius:", xyPadding, 0);
+			gd.addNumericField("Z padding radius (negative means autodetect):", zPadding, 0);
+			gd.addMessage("");
+			gd.addCheckbox("Ignore nails for graph cut (WARNING!)", ignoreNailsWhenSolving );
 			gd.showDialog();
 
 			if (gd.wasCanceled()) return;
-			bw.setSmoothingConstraint((int) gd.getNextNumber());
-			bw.setPaddingXY((int) gd.getNextNumber());
-			bw.setPaddingZ((int) gd.getNextNumber());
+			bw.setSmoothingConstraint(maxDelta = (int) gd.getNextNumber());
+			bw.setSigmaCost( sigmaCost = gd.getNextNumber() );
+			bw.setSigmaHeightmap( sigmaHeightmap = gd.getNextNumber() );
+			bw.setPaddingXY(xyPadding = (int) gd.getNextNumber());
+			bw.setPaddingZ(zPadding = (int) gd.getNextNumber());
+			bw.setIgnoreNailsGraphCut( ignoreNailsWhenSolving = gd.getNextBoolean() );
 
 			bw.restimateTransformation(true);
 		}

@@ -2329,8 +2329,20 @@ public class BigWarp< T >
 		solverThread.setPaddingXY(v);
 	}
 
+	public void setSigmaCost(double v) {
+		solverThread.setSigmaCost(v);
+	}
+
+	public void setSigmaHeightmap(double v) {
+		solverThread.setSigmaHeightmap(v);
+	}
+
 	public void setPaddingZ(int v) {
 		solverThread.setPaddingZ(v);
+	}
+
+	public void setIgnoreNailsGraphCut(boolean v) {
+		solverThread.setIgnoreNailsGraphCut(v);
 	}
 
 	public enum WarpVisType
@@ -3403,8 +3415,11 @@ public class BigWarp< T >
 
 		private double[] pt;
 		private int smoothingConstraint = 5;
+		private double sigmaCost = 1;
+		private double sigmaHeighmap = 2;
 		private int paddingXY = 100;
 		private int paddingZ = -1;
+		private boolean ignoreActualNails = false;
 
 		public SolveThread( final BigWarp<?> bw )
 		{
@@ -3499,7 +3514,7 @@ public class BigWarp< T >
 							System.out.println("Max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
 							// TODO: Use RA-Op instead of RAI op
-							double[] smoothingSigmas = new double[]{1, 1, 0};
+							double[] smoothingSigmas = new double[]{sigmaCost, sigmaCost, 0};
 							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
 
 							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
@@ -3547,10 +3562,17 @@ public class BigWarp< T >
 							System.out.println("Region border has been nailed");
 
 							// Now apply nails
-							for (int k = 0; k < nails.size(); k++) {
-								BigWarp.applyNail(nailRegion, nails.get(k));
+							if ( !ignoreActualNails )
+							{
+								for (int k = 0; k < nails.size(); k++) {
+									BigWarp.applyNail(nailRegion, nails.get(k));
+								}
+								System.out.println("All nails have been applied. Now solving graphcut...");
 							}
-							System.out.println("All nails have been applied. Now solving graphcut...");
+							else
+							{
+								System.out.println("WARNING: Nails only used to define area, not using in the solve. Now solving graphcut...");
+							}
 							long startTime = System.nanoTime();
 
 							ImageJFunctions.wrap(nailRegion, "Sampled cost").show();
@@ -3590,12 +3612,12 @@ public class BigWarp< T >
 							ImageJFunctions.wrap(Views.interval(heightmap, heightmapPatch),"patched offset HM").show();
 
 							// Run a gaussian on the patch using the patched heightmap (NEEDS TO BE DEBUGGED)
-							double[] hmSigmas = new double[]{2, 2};
+							double[] hmSigmas = new double[]{sigmaHeighmap, sigmaHeighmap};
 							//int[] hmhks = Gauss3.halfkernelsizes(hmSigmas);
-                            ExecutorService exec = Executors.newFixedThreadPool(32);
+                            ExecutorService exec = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() / 2);
 
                             RandomAccessibleInterval<DoubleType> smoothPatch = bw.imagej.op().create().img((Interval) heightmapPatch);
-							SeparableSymmetricConvolution.convolve(Gauss3.halfkernels(hmSigmas), heightmap, smoothPatch, exec);
+							SeparableSymmetricConvolution.convolve(Gauss3.halfkernels(hmSigmas), Views.extendBorder( heightmap ), smoothPatch, exec);
 
 							// Copy the gaussian result back into the heightmap
 							hmCursor = Views.flatIterable(Views.interval(heightmap, smoothPatch)).cursor();
@@ -3727,12 +3749,24 @@ public class BigWarp< T >
 			this.smoothingConstraint = v;
 		}
 
+		public void setSigmaCost(double v) {
+			this.sigmaCost = v;
+		}
+
+		public void setSigmaHeightmap(double v) {
+			this.sigmaHeighmap = v;
+		}
+
 		public void setPaddingXY(int v) {
 			this.paddingXY = v;
 		}
 
 		public void setPaddingZ(int v) {
 			this.paddingZ = v;
+		}
+		
+		public void setIgnoreNailsGraphCut( boolean v ) {
+			this.ignoreActualNails = v;
 		}
 	}
 
