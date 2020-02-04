@@ -1127,6 +1127,7 @@ public class BigWarpActions
 	public static int xyPadding = 500;
 	public static int zPadding = -1;
 	public static boolean ignoreNailsWhenSolving = false;
+	public static double additionalHeightmapOffset = 0.0;
 	
 	public static class ApplyFlattenAction extends AbstractNamedAction
 	{
@@ -1151,6 +1152,7 @@ public class BigWarpActions
 			gd.addNumericField("Z padding radius (negative means autodetect):", zPadding, 0);
 			gd.addMessage("");
 			gd.addCheckbox("Ignore nails for graph cut (WARNING!)", ignoreNailsWhenSolving );
+			gd.addNumericField("Additional heightmap offset (WARNING)", additionalHeightmapOffset, 1);
 			gd.showDialog();
 
 			if (gd.wasCanceled()) return;
@@ -1160,6 +1162,7 @@ public class BigWarpActions
 			bw.setPaddingXY(xyPadding = (int) gd.getNextNumber());
 			bw.setPaddingZ(zPadding = (int) gd.getNextNumber());
 			bw.setIgnoreNailsGraphCut( ignoreNailsWhenSolving = gd.getNextBoolean() );
+			bw.setAdditionalHeightmapOffset( additionalHeightmapOffset = gd.getNextNumber() );
 
 			bw.restimateTransformation(true);
 		}

@@ -2345,6 +2345,10 @@ public class BigWarp< T >
 		solverThread.setIgnoreNailsGraphCut(v);
 	}
 
+	public void setAdditionalHeightmapOffset( double v ) {
+		solverThread.setAdditionalHeightmapOffset(v);
+	}
+
 	public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
@@ -3420,6 +3424,7 @@ public class BigWarp< T >
 		private int paddingXY = 100;
 		private int paddingZ = -1;
 		private boolean ignoreActualNails = false;
+		private double additionalHeigthmapOffset = 0.0;
 
 		public SolveThread( final BigWarp<?> bw )
 		{
@@ -3558,7 +3563,7 @@ public class BigWarp< T >
 							}
 
 							// Nail along the border (performed in sampled coords, but with correct origin/min)
-							bw.nailRegionBorder(nailRegion, heightmap);
+							bw.nailRegionBorder(nailRegion, heightmap,additionalHeigthmapOffset);
 							System.out.println("Region border has been nailed");
 
 							// Now apply nails
@@ -3606,7 +3611,7 @@ public class BigWarp< T >
 							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
 								hmCursor.fwd();
-								hmCursor.get().set(patchCursor.get().get() + offset - 1);
+								hmCursor.get().set(patchCursor.get().get() + offset - 1 + additionalHeigthmapOffset);
 							}
 
 							ImageJFunctions.wrap(Views.interval(heightmap, heightmapPatch),"patched offset HM").show();
@@ -3768,6 +3773,10 @@ public class BigWarp< T >
 		public void setIgnoreNailsGraphCut( boolean v ) {
 			this.ignoreActualNails = v;
 		}
+		
+		public void setAdditionalHeightmapOffset( double v ) {
+			this.additionalHeigthmapOffset = v;
+		}
 	}
 
 	/**
@@ -3776,7 +3785,7 @@ public class BigWarp< T >
 	 * @param costRegion, in subsampled coordinates, with the correct min
 	 * @param heightmap
 	 */
-    private void nailRegionBorder(RandomAccessibleInterval<DoubleType> costRegion, RandomAccessibleInterval<DoubleType> heightmap) {
+    private void nailRegionBorder(RandomAccessibleInterval<DoubleType> costRegion, RandomAccessibleInterval<DoubleType> heightmap, final double additionalOffset) {
 	    // Nail periphery to the heightmap along X
         long[] crPos = new long[3];// for costRegion
         RandomAccess<DoubleType> crAccess = costRegion.randomAccess();
@@ -3794,7 +3803,7 @@ public class BigWarp< T >
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(crPos);
                 double hmVal = hmAccess.get().getRealDouble();
-                if( z == Math.round(hmVal) ) {
+                if( z == Math.round(hmVal)-additionalOffset ) {
                     crAccess.get().set(0);
                 } else {
                     crAccess.get().set(nailPenalty);
@@ -3806,7 +3815,7 @@ public class BigWarp< T >
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(crPos);
                 hmVal = hmAccess.get().getRealDouble();
-                if( z == Math.round(hmVal) ) {
+                if( z == Math.round(hmVal)-additionalOffset ) {
                     crAccess.get().set(0);
                 } else {
                     crAccess.get().set(nailPenalty);
@@ -3825,7 +3834,7 @@ public class BigWarp< T >
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(crPos);
                 double hmVal = hmAccess.get().getRealDouble();
-                if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
+                if( z == Math.round(hmVal)-additionalOffset ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);
                 } else {
                     crAccess.get().set(nailPenalty);
@@ -3837,7 +3846,7 @@ public class BigWarp< T >
                 crAccess.setPosition(crPos);
                 hmAccess.setPosition(crPos);
                 hmVal = hmAccess.get().getRealDouble();
-                if( z == Math.round(hmVal) ) {// FIXME: check if this rounding is proper
+                if( z == Math.round(hmVal)-additionalOffset ) {// FIXME: check if this rounding is proper
                     crAccess.get().set(0);
                 } else {
                     crAccess.get().set(nailPenalty);
