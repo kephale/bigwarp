@@ -3570,7 +3570,7 @@ public class BigWarp< T >
 							if ( !ignoreActualNails )
 							{
 								for (int k = 0; k < nails.size(); k++) {
-									BigWarp.applyNail(nailRegion, nails.get(k));
+									BigWarp.applyNail(nailRegion, nails.get(k), additionalHeigthmapOffset);
 								}
 								System.out.println("All nails have been applied. Now solving graphcut...");
 							}
@@ -3954,7 +3954,7 @@ public class BigWarp< T >
 	 * @param costImg
 	 * @param nail
 	 */
-    private static void applyNail(RandomAccessibleInterval<DoubleType> costImg, Double[] nail) {
+    private static void applyNail(RandomAccessibleInterval<DoubleType> costImg, Double[] nail, final double additionalOffset) {
         RandomAccess<DoubleType> ra = costImg.randomAccess();
 
         long[] gridNail = new long[]{0, 0, Math.round(nail[2])};
@@ -3973,7 +3973,7 @@ public class BigWarp< T >
         for( long z = zStart; z <= zStop; z++ ) {
             pos[2] = z;
             ra.setPosition(pos);
-            if( z == gridNail[2] ) {
+            if( z == gridNail[2] - additionalOffset ) {
             	ra.get().setReal(0);
             } else {
             	ra.get().setReal(nailPenalty);
