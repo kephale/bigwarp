@@ -67,6 +67,7 @@ import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.util.Intervals;
 import net.imglib2.util.Pair;
+import net.imglib2.util.RealSum;
 import net.imglib2.view.IntervalView;
 import net.imglib2.view.SubsampleIntervalView;
 import org.apache.log4j.LogManager;
@@ -369,6 +370,8 @@ public class BigWarp< T >
 	// end SEMA additions
 
 	private CopyOnWriteArrayList< TransformListener< InvertibleRealTransform > > transformListeners = new CopyOnWriteArrayList<>( );
+	private double minMean;
+	private double maxMean;
 
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2275,11 +2278,11 @@ public class BigWarp< T >
         N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
 
         // At this point the min and max heightmaps are updated to account for the nails
-        DoubleType minMean = SemaUtils.getAvgValue(minHeightmap);
-        DoubleType maxMean = SemaUtils.getAvgValue(maxHeightmap);
+//        DoubleType minMean = SemaUtils.getAvgValue(minHeightmap);
+//        DoubleType maxMean = SemaUtils.getAvgValue(maxHeightmap);
 
-        n5.setAttribute(flattenDataset + minFaceDatasetName, "mean", minMean.get());
-        n5.setAttribute(flattenDataset + maxFaceDatasetName, "mean", maxMean.get());
+        n5.setAttribute(flattenDataset + minFaceDatasetName, "mean", minMean);
+        n5.setAttribute(flattenDataset + maxFaceDatasetName, "mean", maxMean);
         System.out.println("Saving heightmaps (into n5): " + flattenDataset + minFaceDatasetName + " " + flattenDataset + maxFaceDatasetName);
 
         // Now save nails
@@ -2347,6 +2350,22 @@ public class BigWarp< T >
 
 	public void setAdditionalHeightmapOffset( double v ) {
 		solverThread.setAdditionalHeightmapOffset(v);
+	}
+
+	public void setMinMean(double minMean) {
+		this.minMean = minMean;
+	}
+
+	public double getMinMean() {
+		return minMean;
+	}
+
+	public void setMaxMean(double maxMean) {
+		this.maxMean = maxMean;
+	}
+
+	public double getMaxMean() {
+		return maxMean;
 	}
 
 	public enum WarpVisType
@@ -3470,8 +3489,8 @@ public class BigWarp< T >
                         // Open our N5 reader now so we can get mean values from heightmaps
                         N5FSReader n5 = new N5FSReader(bw.n5Path);
 
-                        double minMean = n5.getAttribute(bw.flattenDataset + BigWarp.minFaceDatasetName, "mean", double.class);
-						double maxMean = n5.getAttribute(bw.flattenDataset + BigWarp.maxFaceDatasetName, "mean", double.class);
+//                        double minMean = n5.getAttribute(bw.flattenDataset + BigWarp.minFaceDatasetName, "mean", double.class);
+//						double maxMean = n5.getAttribute(bw.flattenDataset + BigWarp.maxFaceDatasetName, "mean", double.class);
 
                         if( nails.size() > 0 ) {
                         	System.out.println("Applying " + nails.size() + "  nails");
@@ -3500,8 +3519,8 @@ public class BigWarp< T >
 								double hmMaxZ = hmMaxAccess.get().get();
 
 								// The heightmap can contain NaN and Infinite, if so, then use the mean as our best guess
-								hmMinZ = ( Double.isNaN(hmMinZ) || Double.isInfinite(hmMinZ) ? minMean : hmMinZ );
-								hmMaxZ = ( Double.isNaN(hmMaxZ) || Double.isInfinite(hmMaxZ) ? maxMean : hmMaxZ );
+								hmMinZ = ( Double.isNaN(hmMinZ) || Double.isInfinite(hmMinZ) ? bw.minMean : hmMinZ );
+								hmMaxZ = ( Double.isNaN(hmMaxZ) || Double.isInfinite(hmMaxZ) ? bw.maxMean : hmMaxZ );
 
 								if( paddingZ < 0 )
 									nailPadding[2] = (long) (Math.min( hmMinZ - nail[2], hmMaxZ - nail[2] ) + 10); // FIXME ad hoc padding
@@ -3608,9 +3627,15 @@ public class BigWarp< T >
 							// Copy the patch into the heightmap
 							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, heightmapPatch)).cursor();
 							net.imglib2.Cursor<DoubleType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
+
+							RealSum prevPatchSum = new RealSum();
+
 							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
 								hmCursor.fwd();
+
+								prevPatchSum.add(hmCursor.get().get());
+
 								hmCursor.get().set(patchCursor.get().get() + offset - 1 + additionalHeigthmapOffset);
 							}
 
@@ -3624,16 +3649,30 @@ public class BigWarp< T >
                             RandomAccessibleInterval<DoubleType> smoothPatch = bw.imagej.op().create().img((Interval) heightmapPatch);
 							SeparableSymmetricConvolution.convolve(Gauss3.halfkernels(hmSigmas), Views.extendBorder( heightmap ), smoothPatch, exec);
 
+							RealSum newPatchSum = new RealSum();
+
 							// Copy the gaussian result back into the heightmap
 							hmCursor = Views.flatIterable(Views.interval(heightmap, smoothPatch)).cursor();
 							patchCursor = Views.flatIterable(smoothPatch).cursor();
 							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
 								hmCursor.fwd();
-								hmCursor.get().set(patchCursor.get().get());
+
+								double v = patchCursor.get().get();
+
+								hmCursor.get().set(v);
+
+								newPatchSum.add(v);
 							}
 
 							ImageJFunctions.wrap(Views.interval(heightmap, smoothPatch),"patched smoothed HM").show();
+
+							long patchSize = heightmapPatch.dimension(0) * heightmapPatch.dimension(1);
+							if( heightmap == bw.minHeightmap ) {
+								bw.minMean = bw.minMean - prevPatchSum.getSum() / patchSize + newPatchSum.getSum() / patchSize;
+							} else {
+								bw.maxMean = bw.maxMean - prevPatchSum.getSum() / patchSize + newPatchSum.getSum() / patchSize;
+							}
 
 							System.out.println("Heightmap has been patched");
 						}
@@ -3642,7 +3681,7 @@ public class BigWarp< T >
                         //bw.saveFlatten();
 
                         // TODO maybe always read from cache
-                        System.out.println("minY is " +  minMean + " and maxY is " + maxMean);
+                        System.out.println("minY is " +  bw.minMean + " and maxY is " + bw.maxMean);
 
 						final FlattenTransform ft = new FlattenTransform(
 								RealViews.affine(
@@ -3655,8 +3694,8 @@ public class BigWarp< T >
 												Views.extendBorder(bw.maxHeightmap),
 												new NLinearInterpolatorFactory<>()),
 										transformScale),
-								minMean,
-								maxMean);
+								bw.minMean,
+								bw.maxMean);
 
                         bw.currentTransform = ft;
 						//bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement

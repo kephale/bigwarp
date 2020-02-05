@@ -350,6 +350,8 @@ public class NailFlat implements Callable<Void> {
 		bw.setUseVolatile(useVolatile);
 		bw.setN5Path(n5Path);
 		bw.setFlattenSubContainer(flattenDataset);
+		bw.setMinMean(minMean);
+		bw.setMaxMean(maxMean);
 
 		//bw.setCost(cost);
 		bw.setCost(costMipmaps[0]);
