@@ -27,7 +27,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import bdv.util.BdvFunctions;
+import bdv.util.*;
 import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.realtransform.*;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
@@ -40,8 +40,6 @@ import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 
 import bdv.ij.util.ProgressWriterIJ;
-import bdv.util.RandomAccessibleIntervalMipmapSource;
-import bdv.util.RandomAccessibleIntervalSource;
 import bdv.util.volatiles.SharedQueue;
 import bdv.viewer.Source;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
@@ -366,7 +364,7 @@ public class NailFlat implements Callable<Void> {
 				Transform.createTransformedInterval(
 						costDouble,
 						costMipmaps[0],
-						new Translation3D(4, 0, 4),
+						new Translation3D(scales[costMipmapToUse][0] * 0.5, 0, scales[costMipmapToUse][2] * 0.5),
 //						new ScaleAndTranslation(
 //								scales[costMipmapToUse],
 //								new double[]{4, 4, 4}),
