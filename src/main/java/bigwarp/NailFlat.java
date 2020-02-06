@@ -27,6 +27,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import bdv.util.BdvFunctions;
+import net.imglib2.img.display.imagej.ImageJFunctions;
+import net.imglib2.realtransform.*;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
 import org.janelia.saalfeldlab.hotknife.util.Show;
 import org.janelia.saalfeldlab.hotknife.util.Transform;
@@ -51,11 +54,6 @@ import net.imglib2.Interval;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.converter.Converters;
 import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
-import net.imglib2.realtransform.RealTransformSequence;
-import net.imglib2.realtransform.RealViews;
-import net.imglib2.realtransform.Scale2D;
-import net.imglib2.realtransform.Scale3D;
-import net.imglib2.realtransform.Translation3D;
 import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
@@ -74,6 +72,8 @@ import picocli.CommandLine.Option;
  * @author Stephan Saalfeld &lt;saalfelds@janelia.hhmi.org&gt;
  */
 public class NailFlat implements Callable<Void> {
+
+	static int costMipmapToUse = 3;
 
 	@Option(names = {"-i", "--container"}, required = true, description = "container path, e.g. -i /nrs/flyem/tmp/VNC.n5")
 	private String n5Path = "/nrs/flyem/alignment/kyle/nail_test.n5";
@@ -109,11 +109,12 @@ public class NailFlat implements Callable<Void> {
 			args = new String[]{
 			        "-i", "/nrs/flyem/tmp/VNC.n5",
 					"-d", "/zcorr/Sec06___20200130_110551",
-					"-f", "/flatten/Sec06___20200130_110551_kyle001",
-					"-s", "/cost/Sec06_step6_v01",
+					"-f", "/flatten/Sec06___20200130_110551_kyle002",
+					"-s", "/cost/Sec06",
+					"--costStep", "8",
 //					"-u"
-					"--min", "/flatten/Sec06_original/heightmaps/min",
-					"--max", "/flatten/Sec06_original/heightmaps/max"
+					"--min", "/flatten/Sec06_step_8/heightmaps/min",
+					"--max", "/flatten/Sec06_step_8/heightmaps/max"
 					};
 			// these args for Sec22 were used for initial testing
 //			args = new String[]{
@@ -239,8 +240,9 @@ public class NailFlat implements Callable<Void> {
 		System.out.println("Done reading rawMipmaps");
 		System.out.println("Time: " + LocalDateTime.now());
 
+
 		System.out.println("rawMipmaps[0]: " + rawMipmaps[0].dimension(0) + " " + rawMipmaps[0].dimension(1) + " " + rawMipmaps[0].dimension(2));
-		System.out.println("costMipmaps[0]: " + costMipmaps[0].dimension(0) + " " + costMipmaps[0].dimension(1) + " " + costMipmaps[0].dimension(2));
+		System.out.println("costMipmaps[0]: " + costMipmaps[costMipmapToUse].dimension(0) + " " + costMipmaps[costMipmapToUse].dimension(1) + " " + costMipmaps[costMipmapToUse].dimension(2));
 
 		final int numProc = Runtime.getRuntime().availableProcessors();
 		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
@@ -270,8 +272,8 @@ public class NailFlat implements Callable<Void> {
 		// TODO: Height maps contain NaN's and sometimes strong negative numbers
 		//ImageJFunctions.show(min);
 
-		double transformScaleX = 6;
-		double transformScaleY = 6;
+		double transformScaleX = 8;
+		double transformScaleY = 8;
 		final Scale2D transformScale = new Scale2D(transformScaleX, transformScaleY);
 		final FlattenTransform ft = new FlattenTransform(
 								RealViews.affine(
@@ -354,7 +356,27 @@ public class NailFlat implements Callable<Void> {
 		bw.setMaxMean(maxMean);
 
 		//bw.setCost(cost);
-		bw.setCost(costMipmaps[0]);
+
+		RandomAccessibleInterval<DoubleType> costDouble =
+				Converters.convert(
+						costMipmaps[costMipmapToUse],
+						(a, b) -> b.setReal(a.getRealDouble()),
+						new DoubleType());
+		RandomAccessibleInterval<DoubleType> costInterp =
+				Transform.createTransformedInterval(
+						costDouble,
+						costMipmaps[0],
+						new Translation3D(4, 0, 4),
+//						new ScaleAndTranslation(
+//								scales[costMipmapToUse],
+//								new double[]{4, 4, 4}),
+						new DoubleType(0));
+
+//		BdvFunctions.show(costDouble, "costDouble");
+//		BdvFunctions.show(costInterp, "interp");
+
+		bw.setCost(costInterp);
+
 		bw.setCostStepData(costStep);
 
 		bw.setUpdateWarpOnChange(false);

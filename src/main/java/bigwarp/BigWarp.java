@@ -331,13 +331,12 @@ public class BigWarp< T >
 	private File movingImageXml;
 
 	// SEMA additions
-	double transformScaleX = 6;
+	double transformScaleX = 8;
 	double transformScaleY = transformScaleX;
 
-	private static double nailReward = -100000;//Double.MIN_VALUE;// only used for the manually placed nail, not border
 	private static double nailPenalty = 10000;//Double.MAX_VALUE;
     //private static double nailPenalty = 1000;
-	private static int costStep = 6;
+	private static int costStep = 8;
 
 	private long flattenPadding = 2000;
 	//private long nailPadding = costStep * 10;
@@ -352,7 +351,7 @@ public class BigWarp< T >
 	private SharedQueue queue;
 	private RandomAccessibleInterval<DoubleType> minHeightmap;
 	private RandomAccessibleInterval<DoubleType> maxHeightmap;
-	private RandomAccessibleInterval<UnsignedByteType> cost;
+	private RandomAccessibleInterval<DoubleType> cost;
 	private FinalVoxelDimensions voxelDimensions;
 	private double[][] scales;
 	private String name;
@@ -2219,7 +2218,7 @@ public class BigWarp< T >
 		this.maxHeightmap = max;
 	}
 
-	public void setCost(RandomAccessibleInterval<UnsignedByteType> cost) {
+	public void setCost(RandomAccessibleInterval<DoubleType> cost) {
 		this.cost = cost;
 	}
 
@@ -3472,9 +3471,7 @@ public class BigWarp< T >
 						// NOTE: costImg is expected to already be subsampled at <costStep> interval along axis 2 (before this permutation)
 						// Therefore we subsample along X as well to stay isotropic
 						RandomAccessibleInterval<DoubleType> costImg =
-								Views.subsample(
-									Views.permute(bw.getCostImg(), 1, 2),
-									costStep,1,1);
+									Views.permute(bw.getCostImg(), 1, 2);
 
 						long[] dimensions = new long[3];
 						costImg.dimensions(dimensions);
@@ -3545,15 +3542,15 @@ public class BigWarp< T >
 							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
 
 							// grab a larger cost region
-							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
+//							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
+//
+//							// smooth larger region
+//							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
+//
+//							// crop interior
+//							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
 
-							// smooth larger region
-							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
-
-							// crop interior
-							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
-
-//                            RandomAccessibleInterval<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
+                            RandomAccessibleInterval<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
 
 							// Create a new RAI and copy the cost region
 							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) costRegion);
@@ -3896,8 +3893,7 @@ public class BigWarp< T >
 	}
 
 	private RandomAccessibleInterval<DoubleType> getCostImg() {
-		RandomAccessibleInterval<DoubleType> rai = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-		return rai;
+		return cost;
 	}
 
 	public static Source<?>[] makeFlatAndOriginalSource(RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps,
