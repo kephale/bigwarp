@@ -349,8 +349,8 @@ public class BigWarp< T >
 	private RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps;
 	private boolean useVolatile;
 	private SharedQueue queue;
-	private RandomAccessibleInterval<DoubleType> minHeightmap;
-	private RandomAccessibleInterval<DoubleType> maxHeightmap;
+	private RandomAccessibleInterval<FloatType> minHeightmap;
+	private RandomAccessibleInterval<FloatType> maxHeightmap;
 	private RandomAccessibleInterval<DoubleType> cost;
 	private FinalVoxelDimensions voxelDimensions;
 	private double[][] scales;
@@ -371,6 +371,7 @@ public class BigWarp< T >
 	private CopyOnWriteArrayList< TransformListener< InvertibleRealTransform > > transformListeners = new CopyOnWriteArrayList<>( );
 	private double minMean;
 	private double maxMean;
+	private double heightmapScale = 1;
 
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2210,11 +2211,11 @@ public class BigWarp< T >
 		this.movingImageXml = movingImageXml;
 	}
 
-	public void setMinHeightmap(RandomAccessibleInterval<DoubleType> min) {
+	public void setMinHeightmap(RandomAccessibleInterval<FloatType> min) {
 		this.minHeightmap = min;
 	}
 
-	public void setMaxHeightmap(RandomAccessibleInterval<DoubleType> max) {
+	public void setMaxHeightmap(RandomAccessibleInterval<FloatType> max) {
 		this.maxHeightmap = max;
 	}
 
@@ -2280,8 +2281,8 @@ public class BigWarp< T >
 //        DoubleType minMean = SemaUtils.getAvgValue(minHeightmap);
 //        DoubleType maxMean = SemaUtils.getAvgValue(maxHeightmap);
 
-        n5.setAttribute(flattenDataset + minFaceDatasetName, "mean", minMean);
-        n5.setAttribute(flattenDataset + maxFaceDatasetName, "mean", maxMean);
+        n5.setAttribute(flattenDataset + minFaceDatasetName, "avg", minMean);
+        n5.setAttribute(flattenDataset + maxFaceDatasetName, "avg", maxMean);
         System.out.println("Saving heightmaps (into n5): " + flattenDataset + minFaceDatasetName + " " + flattenDataset + maxFaceDatasetName);
 
         // Now save nails
@@ -2309,7 +2310,7 @@ public class BigWarp< T >
 	    this.flattenDataset = flattenDataset;
     }
 
-	public RandomAccessibleInterval<DoubleType> getCorrespondingHeightmap(Double z) {
+	public RandomAccessibleInterval<FloatType> getCorrespondingHeightmap(Double z) {
 		long offset;
 		if (z > (float) (rawMipmaps[0].dimension(2)) / 2.0 && z > (float) (rawMipmaps[0].dimension(2)) / 2.0) {
 			// Max heightmap
@@ -2365,6 +2366,10 @@ public class BigWarp< T >
 
 	public double getMaxMean() {
 		return maxMean;
+	}
+
+	public void setHeightmapScale(double heightmapScale) {
+		this.heightmapScale = heightmapScale;
 	}
 
 	public enum WarpVisType
@@ -3466,7 +3471,7 @@ public class BigWarp< T >
 					try
 					{
 						//InvertibleRealTransform invXfm = bw.getTransformation( index );
-						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
+						final Scale2D transformScale = new Scale2D(bw.getCostStep(), bw.getCostStep());
 
 						// NOTE: costImg is expected to already be subsampled at <costStep> interval along axis 2 (before this permutation)
 						// Therefore we subsample along X as well to stay isotropic
@@ -3499,8 +3504,8 @@ public class BigWarp< T >
 							// Convert nail padding into subsampled space
 							long[] nailPadding = new long[]{paddingXY / costStep, paddingXY / costStep, paddingZ};
 
-							RandomAccess<DoubleType> hmMinAccess = bw.minHeightmap.randomAccess();
-							RandomAccess<DoubleType> hmMaxAccess = bw.maxHeightmap.randomAccess();
+							RandomAccess<FloatType> hmMinAccess = bw.minHeightmap.randomAccess();
+							RandomAccess<FloatType> hmMaxAccess = bw.maxHeightmap.randomAccess();
 
 							for (int k = 0; k < nails.size(); k++) {
 
@@ -3564,7 +3569,7 @@ public class BigWarp< T >
 							}
 
 							// This logic is risky FIXME
-							RandomAccessibleInterval<DoubleType> heightmap;
+							RandomAccessibleInterval<FloatType> heightmap;
 							long offset;
 							if (regionMin[2] > (float) (dimensions[2]) / 2.0 && regionMax[2] > (float) (dimensions[2]) / 2.0) {
 								// Max heightmap
@@ -3622,7 +3627,7 @@ public class BigWarp< T >
 //							System.out.println("Replacement patch average value: " + SemaUtils.getAvgValue(heightmapPatch));
 
 							// Copy the patch into the heightmap
-							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, heightmapPatch)).cursor();
+							net.imglib2.Cursor<FloatType> hmCursor = Views.flatIterable(Views.interval(heightmap, heightmapPatch)).cursor();
 							net.imglib2.Cursor<DoubleType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
 
 							RealSum prevPatchSum = new RealSum();
@@ -3633,7 +3638,7 @@ public class BigWarp< T >
 
 								prevPatchSum.add(hmCursor.get().get());
 
-								hmCursor.get().set(patchCursor.get().get() + offset - 1 + additionalHeigthmapOffset);
+								hmCursor.get().set((float) (patchCursor.get().get() + offset - 1 + additionalHeigthmapOffset));
 							}
 
 							ImageJFunctions.wrap(Views.interval(heightmap, heightmapPatch),"patched offset HM").show();
@@ -3657,7 +3662,7 @@ public class BigWarp< T >
 
 								double v = patchCursor.get().get();
 
-								hmCursor.get().set(v);
+								hmCursor.get().set((float)v);
 
 								newPatchSum.add(v);
 							}
@@ -3678,7 +3683,8 @@ public class BigWarp< T >
                         //bw.saveFlatten();
 
                         // TODO maybe always read from cache
-                        System.out.println("minY is " +  bw.minMean + " and maxY is " + bw.maxMean);
+                        System.out.println("minY is " +  bw.minMean + "(" + ( ( bw.minMean + 0.5 ) * bw.getHeightmapScale() - 0.5 ) + ")"
+								+ " and maxY is " + bw.maxMean + "(" + ( ( bw.maxMean + 0.5 ) * bw.getHeightmapScale() - 0.5 ) + ")");
 
 						final FlattenTransform ft = new FlattenTransform(
 								RealViews.affine(
@@ -3691,8 +3697,8 @@ public class BigWarp< T >
 												Views.extendBorder(bw.maxHeightmap),
 												new NLinearInterpolatorFactory<>()),
 										transformScale),
-								bw.minMean,
-								bw.maxMean);
+								( bw.minMean + 0.5 ) * bw.getHeightmapScale() - 0.5,
+								( bw.maxMean + 0.5 ) * bw.getHeightmapScale() - 0.5);
 
                         bw.currentTransform = ft;
 						//bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement
@@ -3815,17 +3821,21 @@ public class BigWarp< T >
 		}
 	}
 
+	private double getHeightmapScale() {
+		return heightmapScale;
+	}
+
 	/**
      * This method nails the X/Z border of the costRegion at Y-positions encoded by the heightmap
      * This is a mutable function
 	 * @param costRegion, in subsampled coordinates, with the correct min
 	 * @param heightmap
 	 */
-    private void nailRegionBorder(RandomAccessibleInterval<DoubleType> costRegion, RandomAccessibleInterval<DoubleType> heightmap, final double additionalOffset) {
+    private void nailRegionBorder(RandomAccessibleInterval<DoubleType> costRegion, RandomAccessibleInterval<FloatType> heightmap, final double additionalOffset) {
 	    // Nail periphery to the heightmap along X
         long[] crPos = new long[3];// for costRegion
         RandomAccess<DoubleType> crAccess = costRegion.randomAccess();
-        RandomAccess<DoubleType> hmAccess = heightmap.randomAccess();
+        RandomAccess<FloatType> hmAccess = heightmap.randomAccess();
 
         // Nail along X border (at min/max Y of interval)
         for( long x = costRegion.min(0); x <= costRegion.max(0); x++ ) {
