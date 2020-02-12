@@ -103,7 +103,7 @@ public class NailFlat implements Callable<Void> {
 					"-d", "/zcorr/Sec02___20200114_103029",
 					"-f", "/heightfields/Sec02_20200206_152322_kyle01",
 					"-s", "/cost/Sec02_20200206_152322/s1",
-					"--heightmaps", "/heightfields/Sec02_20200206_152322/s7"
+					"--heightmaps", "/heightfields/Sec02_20200206_152322/s1"
 					};
 
 		CommandLine.call(new NailFlat(), args);
@@ -307,6 +307,7 @@ public class NailFlat implements Callable<Void> {
 		bw.setCost(cost);
 		bw.setCostStepData((int) costDSFactors[0]);
 		bw.setHeightmapDownsamplingFactors(downsamplingFactors);
+		bw.setCostDownsamplingFactors(new double[]{costDSFactors[0], costDSFactors[2], costDSFactors[1]});// mirror the permutation
 
 		bw.setUpdateWarpOnChange(false);
 
@@ -319,6 +320,7 @@ public class NailFlat implements Callable<Void> {
 		System.out.println("f - Apply flatten transform using existing nails");
 		System.out.println("ctrl-n - Generate grid of nails centered around current nail placed along existing heightmap");
 		System.out.println("ctrl-f - Export flatten heightmap and nails\n");
+
 
 		return null;
 	}
