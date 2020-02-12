@@ -3467,9 +3467,6 @@ public class BigWarp< T >
 				if ( b )
 					try
 					{
-						//InvertibleRealTransform invXfm = bw.getTransformation( index );
-						final Scale2D transformScale = new Scale2D(bw.transformScaleX, bw.transformScaleY);
-
 						// NOTE: costImg is expected to already be subsampled at <costStep> interval along axis 2 (before this permutation)
 						// Therefore we subsample along X as well to stay isotropic
 						RandomAccessibleInterval<DoubleType> costImg = bw.getCostImg();
@@ -3483,9 +3480,6 @@ public class BigWarp< T >
 
 						// Now process the nails
                         List<Double[]> nails = bw.landmarkModel.getPoints(false);
-
-                        // Open our N5 reader now so we can get mean values from heightmaps
-                        N5FSReader n5 = new N5FSReader(bw.n5Path);
 
                         if( nails.size() > 0 ) {
                         	System.out.println("Applying " + nails.size() + "  nails");
@@ -3504,7 +3498,7 @@ public class BigWarp< T >
 
 								long[] nail = new long[]{
 										Math.round(nails.get(k)[0] / bw.getHeightmapDownsamplingFactors()[0]),
-										Math.round(nails.get(k)[1] / bw.getHeightmapDownsamplingFactors()[0]),
+										Math.round(nails.get(k)[1] / bw.getHeightmapDownsamplingFactors()[1]),
 										nails.get(k)[2].longValue()};
 
 								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
@@ -3517,8 +3511,13 @@ public class BigWarp< T >
 								hmMinZ = ( Double.isNaN(hmMinZ) || Double.isInfinite(hmMinZ) ? bw.minMean : hmMinZ );
 								hmMaxZ = ( Double.isNaN(hmMaxZ) || Double.isInfinite(hmMaxZ) ? bw.maxMean : hmMaxZ );
 
+								hmMinZ = (hmMinZ + 0.5) * bw.getHeightmapDownsamplingFactors()[2] - 0.5;
+								hmMaxZ = (hmMaxZ + 0.5) * bw.getHeightmapDownsamplingFactors()[2] - 0.5;
+
+								// TODO: hmMinZ needs to be rescaled
+
 								if( paddingZ < 0 )
-									nailPadding[2] = (long) (Math.min( hmMinZ - nail[2], hmMaxZ - nail[2] ) + 10); // FIXME ad hoc padding
+									nailPadding[2] = (long) (Math.min( hmMinZ - nail[2], hmMaxZ - nail[2] ));
 								else
 									nailPadding[2] = paddingZ;
 
@@ -3536,19 +3535,8 @@ public class BigWarp< T >
 							double[] smoothingSigmas = new double[]{sigmaCost, sigmaCost, 0};
 							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
 
-							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
-							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
-
-							// grab a larger cost region
-							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
-
-							// smooth larger region
-							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
-
 							// crop interior
-							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
-
-//                            RandomAccessibleInterval<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
+                            RandomAccessibleInterval<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
 
 							// Create a new RAI and copy the cost region
 							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) costRegion);
@@ -3742,7 +3730,7 @@ public class BigWarp< T >
 						bw.getViewerFrameQ().getViewerPanel().requestRepaint();
 					}
 
-					catch ( final RejectedExecutionException | IOException e )
+					catch ( final RejectedExecutionException e )
 					{
 						// this happens when the rendering threadpool
 						// is killed before the painter thread.

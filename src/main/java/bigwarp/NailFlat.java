@@ -137,14 +137,16 @@ public class NailFlat implements Callable<Void> {
 			minMean = n5.getAttribute(heightmapDataset + "/min", "avg", double.class);
 			maxMean = n5.getAttribute(heightmapDataset + "/max", "avg", double.class);
 
-			double[] unPermutedDownsamplingFactors = n5.getAttribute(heightmapDataset, "downsamplingFactors", double[].class);
-			downsamplingFactors = new double[]{unPermutedDownsamplingFactors[0], unPermutedDownsamplingFactors[2], unPermutedDownsamplingFactors[1]};
+			//double[] unPermutedDownsamplingFactors = n5.getAttribute(heightmapDataset, "downsamplingFactors", double[].class);
+			//downsamplingFactors = new double[]{unPermutedDownsamplingFactors[0], unPermutedDownsamplingFactors[2], unPermutedDownsamplingFactors[1]};
+			downsamplingFactors = n5.getAttribute(heightmapDataset, "downsamplingFactors", double[].class);
 		} else {
 		    System.out.println("Heightmaps are missing: " + heightmapDataset );
 		    throw new Exception("Missing heightmap");
         }
 		System.out.println("Time: " + LocalDateTime.now());
 
+		System.out.println("Heightmap downsampling factors: " + downsamplingFactors[0] + " " + downsamplingFactors[1] + " " + downsamplingFactors[2]);
 		System.out.println("Min heightmap: " + min.dimension(0) + " " + min.dimension(1) + " " + min.dimension(2));
 		System.out.println("Max heightmap: " + max.dimension(0) + " " + max.dimension(1) + " " + max.dimension(2));
 
