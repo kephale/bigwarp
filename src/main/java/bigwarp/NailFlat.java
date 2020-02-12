@@ -71,7 +71,7 @@ import picocli.CommandLine.Option;
  */
 public class NailFlat implements Callable<Void> {
 
-	static int costMipmapToUse = 3;
+	static int costMipmapToUse = 1;
 
 	@Option(names = {"-i", "--container"}, required = true, description = "container path, e.g. -i /nrs/flyem/tmp/VNC.n5")
 	private String n5Path = "/nrs/flyem/alignment/kyle/nail_test.n5";
@@ -81,9 +81,6 @@ public class NailFlat implements Callable<Void> {
 
 	@Option(names = {"-s", "--cost"}, required = true, description = "Cost dataset -d '/cost/Sec22___20200110_133809'")
 	private String costDataset = "/volumes/cost";
-
-	@Option(names = {"--costStep"}, required = false, description = "Cost step size --costStep 6, (default is 1)")
-	private int costStep = 1;
 
 	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/flatten/Sec22___20200110_133809'")
 	private String flattenDataset = "/flatten";
@@ -109,36 +106,27 @@ public class NailFlat implements Callable<Void> {
 		if( args.length == 0 )
 			args = new String[]{
 			        "-i", "/nrs/flyem/tmp/VNC.n5",
-					"-d", "/zcorr/Sec02___20200114_103029",
-					"-f", "/heightfields/Sec02_20200206_152322_s7_kyle01",
-					"-s", "/cost/Sec02_20200206_152322",
-					"--costStep", "486",
+					"-d", "/zcorr/Sec03___20200110_121405",
+					"-f", "/heightfields/Sec03_20200206_162201_kyle01",
+					"-s", "/cost/Sec03_20200206_162201",
 //					"-u"
-					"--heightmaps", "/heightfields/Sec02_20200206_152322/s7"
+					"--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
 //					"--min", "/heightfields/Sec02_20200206_152322/s7/min",
 //					"--max", "/heightfields/Sec02_20200206_152322/s7/max"
 					};
-			// these args for Sec22 were used for initial testing
+
 //			args = new String[]{
 //			        "-i", "/nrs/flyem/tmp/VNC.n5",
-//					"-d", "/zcorr/Sec22___20200106_083252",
-//					"-f", "/flatten/Sec22_kyle003",
-//					"-s", "/cost/Sec22_step6_v01",
+//					"-d", "/zcorr/Sec02___20200114_103029",
+//					"-f", "/heightfields/Sec02_20200206_152322_s1_kyle01",
+//					"-s", "/cost/Sec02_20200206_152322",
 ////					"-u"
-//					"--min", "/flatten/Sec22_original/heightmaps/min",
-//					"--max", "/flatten/Sec22_original/heightmaps/max"
+//					"--heightmaps", "/heightfields/Sec02_20200206_152322/s1"
+////					"--min", "/heightfields/Sec02_20200206_152322/s7/min",
+////					"--max", "/heightfields/Sec02_20200206_152322/s7/max"
 //					};
-//			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5",
-//					"-d", "/zcorr/Sec22___20200106_083252",
-//					"-f", "/flatten/Sec22___20200113_kyle002",
-//					"-s", "/cost/Sec22___20200110_160724",
-//					"-u"
-////					"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-bottom.h5",
-////					"--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-top.h5"
-//					};
-			//args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "/cost/Sec23___20200110_152920", "-u"};
-		// to regenerate heightmap from HDF5 use these args
-		    //args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};
+
+
 
 		CommandLine.call(new NailFlat(), args);
 		//new NailFlat().call();
@@ -212,26 +200,34 @@ public class NailFlat implements Callable<Void> {
 		N5Utils.save(max, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
 		n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "avg", maxMean);
 
-		// Adjust heightmaps for half pixel offset
-		min =
-			Views.interval(
-				Views.raster(
-					RealViews.affineReal(
-							Views.interpolate(
-									Views.extendBorder(min),
-									new NLinearInterpolatorFactory<>()),
-							new Translation2D(( costStep - 1 ) * 0.5, ( costStep - 1 ) * 0.5))),
-				min);
+		final RandomAccessibleInterval<UnsignedByteType> costMipmap =
+				N5Utils.openVolatile(
+						n5,
+						costDataset + "/s" + costMipmapToUse);
 
-		max =
-			Views.interval(
-				Views.raster(
-					RealViews.affineReal(
-							Views.interpolate(
-									Views.extendBorder(max),
-									new NLinearInterpolatorFactory<>()),
-							new Translation2D(( costStep - 1 ) * 0.5, ( costStep - 1 ) * 0.5))),
-				max);
+		double[] costDownsample = n5.getAttribute(costDataset + "/s" + costMipmapToUse, "downsamplingFactors", double[].class);
+		long costStep = (long) costDownsample[0];
+
+		// Adjust heightmaps for half pixel offset
+//		min =
+//			Views.interval(
+//				Views.raster(
+//					RealViews.affineReal(
+//							Views.interpolate(
+//									Views.extendBorder(min),
+//									new NLinearInterpolatorFactory<>()),
+//							new Translation2D(( costStep - 1 ) * 0.5, ( costStep - 1 ) * 0.5))),
+//				min);
+//
+//		max =
+//			Views.interval(
+//				Views.raster(
+//					RealViews.affineReal(
+//							Views.interpolate(
+//									Views.extendBorder(max),
+//									new NLinearInterpolatorFactory<>()),
+//							new Translation2D(( costStep - 1 ) * 0.5, ( costStep - 1 ) * 0.5))),
+//				max);
 
 		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
@@ -269,10 +265,7 @@ public class NailFlat implements Callable<Void> {
 		System.out.println("Done reading rawMipmaps");
 		System.out.println("Time: " + LocalDateTime.now());
 
-		final RandomAccessibleInterval<UnsignedByteType> costMipmap =
-				N5Utils.openVolatile(
-						n5,
-						costDataset + "/s" + costMipmapToUse);
+
 
 		System.out.println("rawMipmaps[0]: " + rawMipmaps[0].dimension(0) + " " + rawMipmaps[0].dimension(1) + " " + rawMipmaps[0].dimension(2));
 		System.out.println("costMipmap: " + costMipmap.dimension(0) + " " + costMipmap.dimension(1) + " " + costMipmap.dimension(2));
@@ -300,7 +293,7 @@ public class NailFlat implements Callable<Void> {
 		final IntervalView<DoubleType> zRange = Views.interval(
 				zRange(( minMean + 0.5 ) * heightmapScale - 0.5,
 						( maxMean + 0.5 ) * heightmapScale - 0.5,
-						65000,
+						255,
 						1),
 				new long[]{0, 0, Math.round(( minMean + 0.5 ) * heightmapScale - 0.5) - padding},
 				new long[]{rawMipmaps[0].dimension(0), rawMipmaps[0].dimension(2), Math.round(( maxMean + 0.5 ) * heightmapScale - 0.5) + padding});
@@ -410,7 +403,7 @@ public class NailFlat implements Callable<Void> {
 				Transform.createTransformedInterval(
 						costDouble,
 						rawMipmaps[0],
-						new Translation3D(( scales[costMipmapToUse][0] - 1 ) * 0.5, 0, ( scales[costMipmapToUse][2] - 1 ) * 0.5),
+						new Translation3D(( costDownsample[0] - 1 ) * 0.5, 0, ( costDownsample[2] - 1 ) * 0.5),
 //						new ScaleAndTranslation(
 //								scales[costMipmapToUse],
 //								new double[]{4, 4, 4}),
@@ -421,7 +414,7 @@ public class NailFlat implements Callable<Void> {
 
 		bw.setCost(costInterp);
 
-		bw.setCostStepData(costStep);
+		bw.setCostStepData((int) costStep);
 		bw.setHeightmapScale(heightmapScale);
 		bw.setUpdateWarpOnChange(false);
 
