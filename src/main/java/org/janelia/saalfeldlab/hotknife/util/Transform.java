@@ -16,32 +16,55 @@
  */
 package org.janelia.saalfeldlab.hotknife.util;
 
-import bdv.util.ConstantRandomAccessible;
-import mpicbg.models.Affine2D;
-import mpicbg.models.InterpolatedAffineModel2D;
-import mpicbg.models.InterpolatedModel;
-import mpicbg.models.Model;
-import net.imglib2.*;
-import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory;
-import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
-import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
-import net.imglib2.position.RealPositionRealRandomAccessible;
-import net.imglib2.realtransform.*;
-import net.imglib2.type.numeric.NumericType;
-import net.imglib2.type.numeric.RealType;
-import net.imglib2.type.numeric.integer.UnsignedByteType;
-import net.imglib2.type.numeric.real.DoubleType;
-import net.imglib2.type.numeric.real.FloatType;
-import net.imglib2.view.Views;
-import org.janelia.saalfeldlab.n5.*;
-import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
-
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
+
+import org.janelia.saalfeldlab.n5.DataType;
+import org.janelia.saalfeldlab.n5.DatasetAttributes;
+import org.janelia.saalfeldlab.n5.GzipCompression;
+import org.janelia.saalfeldlab.n5.N5FSReader;
+import org.janelia.saalfeldlab.n5.N5Reader;
+import org.janelia.saalfeldlab.n5.N5Writer;
+import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
+
+import bdv.util.ConstantRandomAccessible;
+import mpicbg.models.Affine2D;
+import mpicbg.models.InterpolatedAffineModel2D;
+import mpicbg.models.InterpolatedModel;
+import mpicbg.models.Model;
+import net.imglib2.FinalInterval;
+import net.imglib2.Interval;
+import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.RealRandomAccess;
+import net.imglib2.RealRandomAccessible;
+import net.imglib2.converter.Converters;
+import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory;
+import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
+import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
+import net.imglib2.position.RealPositionRealRandomAccessible;
+import net.imglib2.realtransform.AffineGet;
+import net.imglib2.realtransform.AffineTransform;
+import net.imglib2.realtransform.AffineTransform2D;
+import net.imglib2.realtransform.InvertibleRealTransform;
+import net.imglib2.realtransform.PositionFieldTransform;
+import net.imglib2.realtransform.RealTransform;
+import net.imglib2.realtransform.RealTransformRandomAccessible;
+import net.imglib2.realtransform.RealTransformRealRandomAccessible;
+import net.imglib2.realtransform.RealTransformSequence;
+import net.imglib2.realtransform.RealViews;
+import net.imglib2.realtransform.Scale;
+import net.imglib2.realtransform.Scale2D;
+import net.imglib2.realtransform.ScaleAndTranslation;
+import net.imglib2.type.numeric.NumericType;
+import net.imglib2.type.numeric.RealType;
+import net.imglib2.type.numeric.integer.UnsignedByteType;
+import net.imglib2.type.numeric.real.DoubleType;
+import net.imglib2.type.numeric.real.FloatType;
+import net.imglib2.view.Views;
 
 /**
  *
@@ -321,7 +344,7 @@ public class Transform {
 		final int n = positionField.numDimensions() - 1;
 
 		@SuppressWarnings("unchecked")
-		final RealRandomAccess<T>[] positionAccesses = (RealRandomAccess<T>[])new RealRandomAccess[(int)positionField.dimension(n)];
+		final RealRandomAccess<T>[] positionAccesses = new RealRandomAccess[(int)positionField.dimension(n)];
 		Arrays.setAll(
 				positionAccesses,
 				d -> Views.interpolate(
@@ -635,5 +658,63 @@ public class Transform {
 		}
 
 		return Views.stack(transformedIntervals);
+	}
+
+
+	/**
+	 * Create a scale and shift transformation from image to world space that
+	 * compensates for the pixel offset introduced by scaling with top left
+	 * pixel coordinates preserved (like when averaging pixel windows for
+	 * downscaling).
+	 *
+	 * @param scale
+	 * @return
+	 */
+	public static ScaleAndTranslation createTopLeftScaleShift(final double[] scale) {
+
+		final double[] offset = new double[scale.length];
+		Arrays.setAll(offset, i -> scale[i] * 0.5 - 0.5);
+		return new ScaleAndTranslation(
+						scale,
+						offset);
+	}
+
+
+	public static <T extends RealType<T>> RealRandomAccessible<T> scaleAndShiftHeightField(
+			final RandomAccessibleInterval<T> heightField,
+			final double[] scale) {
+
+		return RealViews.affineReal(
+				Views.interpolate(
+						Views.extendBorder(heightField),
+						new NLinearInterpolatorFactory<>()),
+				createTopLeftScaleShift(scale));
+	}
+
+
+	public static <T extends RealType<T>> RandomAccessibleInterval<DoubleType> scaleAndShiftHeightFieldValues(
+			final RandomAccessibleInterval<T> heightField,
+			final double scale,
+			final double offset) {
+
+		return Converters.convert(
+				heightField,
+				(a, b) -> b.setReal((a.getRealDouble() + offset + 0.5) * scale - 0.5),
+				new DoubleType());
+	}
+
+	public static <T extends RealType<T>> RealRandomAccessible<DoubleType> scaleAndShiftHeightFieldAndValues(
+			final RandomAccessibleInterval<T> heightField,
+			final double[] scale) {
+
+		return RealViews.affineReal(
+				Views.interpolate(
+						Views.extendBorder(
+								scaleAndShiftHeightFieldValues(
+										heightField,
+										scale[2],
+										0)),
+						new NLinearInterpolatorFactory<>()),
+				createTopLeftScaleShift(new double[] {scale[0], scale[1]}));
 	}
 }
