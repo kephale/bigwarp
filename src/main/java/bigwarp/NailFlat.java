@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import net.imglib2.RealRandomAccessible;
 import org.janelia.saalfeldlab.hotknife.FlattenTransform;
 import org.janelia.saalfeldlab.hotknife.util.Show;
 import org.janelia.saalfeldlab.hotknife.util.Transform;
@@ -81,23 +82,14 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"-d", "--dataset"}, required = true, description = "Input dataset -d '/zcorr/Sec22___20200106_083252'")
 	private String inputDataset = "/volumes/input";
 
-	@Option(names = {"-s", "--cost"}, required = true, description = "Cost dataset -d '/cost/Sec22___20200110_133809'")
+	@Option(names = {"-s", "--cost"}, required = true, description = "Cost dataset -d '/cost/Sec22___20200110_133809/s7'")
 	private String costDataset = "/volumes/cost";
-
-	@Option(names = {"--costStep"}, required = false, description = "Cost step size --costStep 6, (default is 1)")
-	private int costStep = 1;
 
 	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/flatten/Sec22___20200110_133809'")
 	private String flattenDataset = "/flatten";
 
-	@Option(names = {"-u", "--resume"}, required = false, description = "Resume a flattening session by loading min/max from the flatten dataset")
-	private boolean resume = false;
-
-	@Option(names = {"--min"}, required = false, description = "Dataset for the min heightmap -f '/flatten/Sec22___20200110_133809/heightmaps/min' or full path to HDF5")
-	private String minDataset = null;
-
-	@Option(names = {"--max"}, required = false, description = "Dataset for the max heightmap -f '/flatten/Sec22___20200110_133809/heightmaps/max' or full path to HDF5")
-	private String maxDataset = null;
+	@Option(names = {"--heightmaps"}, required = true, description = "Dataset for the heightmap (should contain /min and /max) -f '/flatten/Sec22___20200110_133809/heightmaps'")
+	private String heightmapDataset = null;
 
 	private boolean useVolatile = true;
 	private long padding = 2000;
@@ -108,37 +100,13 @@ public class NailFlat implements Callable<Void> {
 		if( args.length == 0 )
 			args = new String[]{
 			        "-i", "/nrs/flyem/tmp/VNC.n5",
-					"-d", "/zcorr/Sec06___20200130_110551",
-					"-f", "/flatten/Sec06___20200130_110551_kyle001",
-					"-s", "/cost/Sec06_step6_v01",
-//					"-u"
-					"--min", "/flatten/Sec06_original/heightmaps/min",
-					"--max", "/flatten/Sec06_original/heightmaps/max"
+					"-d", "/zcorr/Sec02___20200114_103029",
+					"-f", "/heightfields/Sec02_20200206_152322_kyle01",
+					"-s", "/cost/Sec02_20200206_152322/s1",
+					"--heightmaps", "/heightfields/Sec02_20200206_152322/s7"
 					};
-			// these args for Sec22 were used for initial testing
-//			args = new String[]{
-//			        "-i", "/nrs/flyem/tmp/VNC.n5",
-//					"-d", "/zcorr/Sec22___20200106_083252",
-//					"-f", "/flatten/Sec22_kyle003",
-//					"-s", "/cost/Sec22_step6_v01",
-////					"-u"
-//					"--min", "/flatten/Sec22_original/heightmaps/min",
-//					"--max", "/flatten/Sec22_original/heightmaps/max"
-//					};
-//			args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5",
-//					"-d", "/zcorr/Sec22___20200106_083252",
-//					"-f", "/flatten/Sec22___20200113_kyle002",
-//					"-s", "/cost/Sec22___20200110_160724",
-//					"-u"
-////					"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-bottom.h5",
-////					"--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec22/Sec22-top.h5"
-//					};
-			//args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "-s", "/cost/Sec23___20200110_152920", "-u"};
-		// to regenerate heightmap from HDF5 use these args
-		    //args = new String[]{"-i", "/nrs/flyem/tmp/VNC.n5", "-d", "/zcorr/Sec24___20200106_082231", "-f", "/flatten/Sec24___20200106_082231", "--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};"--min", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-bottom.h5", "--max", "/nrs/flyem/alignment/Z1217-19m/VNC/Sec24/Sec24-top.h5"};
 
 		CommandLine.call(new NailFlat(), args);
-		//new NailFlat().call();
 	}
 
 	@Override
@@ -150,39 +118,29 @@ public class NailFlat implements Callable<Void> {
 		final int numScales = n5.list(inputDataset).length;
 		final long[] dimensions = n5.getDatasetAttributes(inputDataset + "/s0").getDimensions();
 
-		RandomAccessibleInterval<DoubleType> min = null;
-		RandomAccessibleInterval<DoubleType> max = null;
-
-		if( resume ) {
-			minDataset = flattenDataset + BigWarp.minFaceDatasetName;
-			maxDataset = flattenDataset + BigWarp.maxFaceDatasetName;
-			// TODO add support for loading nails
-		}
+		RandomAccessibleInterval<FloatType> min = null;
+		RandomAccessibleInterval<FloatType> max = null;
 
 		ExecutorService exec = Executors.newFixedThreadPool(8);
 
 		System.out.println("Start time: " + LocalDateTime.now());
 
+		double[] costDSFactors;
+		double[] downsamplingFactors;
 		double minMean, maxMean;
 
 		// Min heightmap: Load from N5 if possible
-		if( minDataset != null && n5.exists(minDataset) ) {
-			System.out.println("Loading min face from N5 " + minDataset);
-			min = N5Utils.open(n5, minDataset);
-			minMean = n5.getAttribute(minDataset, "mean", double.class);
-		} else {
-		    System.out.println("Min heightmap is missing from: " + minDataset );
-		    throw new Exception("Missing heightmap");
-        }
-		System.out.println("Time: " + LocalDateTime.now());
+		if( n5.exists(heightmapDataset) ) {
+			System.out.println("Loading heightmaps from N5 " + heightmapDataset);
+			min = N5Utils.open(n5, heightmapDataset + "/min");
+			max = N5Utils.open(n5, heightmapDataset + "/max");
+			minMean = n5.getAttribute(heightmapDataset + "/min", "avg", double.class);
+			maxMean = n5.getAttribute(heightmapDataset + "/max", "avg", double.class);
 
-		// Min heightmap: Load from N5 if possible
-		if( maxDataset != null && n5.exists(maxDataset) ) {
-			System.out.println("Loading max face from N5 " + maxDataset);
-			max = N5Utils.open(n5, maxDataset);
-			maxMean = n5.getAttribute(maxDataset, "mean", double.class);
-		}  else {
-		    System.out.println("Max heightmap is missing from: " + maxDataset );
+			double[] unPermutedDownsamplingFactors = n5.getAttribute(heightmapDataset, "downsamplingFactors", double[].class);
+			downsamplingFactors = new double[]{unPermutedDownsamplingFactors[0], unPermutedDownsamplingFactors[2], unPermutedDownsamplingFactors[1]};
+		} else {
+		    System.out.println("Heightmaps are missing: " + heightmapDataset );
 		    throw new Exception("Missing heightmap");
         }
 		System.out.println("Time: " + LocalDateTime.now());
@@ -192,20 +150,16 @@ public class NailFlat implements Callable<Void> {
 
 		// Setup the flatten dataset
 		N5FSWriter n5w = new N5FSWriter(n5Path);
-		N5Utils.save(min, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
-		n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "mean", minMean);
+		N5Utils.save(min, n5w, flattenDataset + "/min", new int[]{1024, 1024}, new RawCompression());
+		n5w.setAttribute(flattenDataset + "/min", "avg", minMean);
 
-		N5Utils.save(max, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
-		n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "mean", maxMean);
+		N5Utils.save(max, n5w, flattenDataset + "/max", new int[]{1024, 1024}, new RawCompression());
+		n5w.setAttribute(flattenDataset + "/max", "avg", maxMean);
 
 		// Handle mipmaps here
 		@SuppressWarnings("unchecked")
 		final RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = new RandomAccessibleInterval[numScales];
 
-		//RandomAccessibleInterval<UnsignedByteType> cost = N5Utils.openVolatile(n5, costDataset + "/s0");
-
-		@SuppressWarnings("unchecked")
-		final RandomAccessibleInterval<UnsignedByteType>[] costMipmaps = new RandomAccessibleInterval[numScales];
 
 		final double[][] scales = new double[numScales][];
 
@@ -218,8 +172,8 @@ public class NailFlat implements Callable<Void> {
 			String scaleDataset = inputDataset + "/s" + s;
 
 			if( s > 0 ) {
-				int[] downsamplingFactors = n5.getAttribute(scaleDataset, "downsamplingFactors", int[].class);
-				scale = downsamplingFactors[0];
+				int[] dfs = n5.getAttribute(scaleDataset, "downsamplingFactors", int[].class);
+				scale = dfs[0];
 			}
 			double inverseScale = 1.0 / scale;
 
@@ -228,33 +182,39 @@ public class NailFlat implements Callable<Void> {
 							n5,
 							scaleDataset);
 
-			// TODO: full res is still full res, is downsampled to every 6th in y when being used 
-			costMipmaps[s] =
-					N5Utils.openVolatile(
-							n5,
-							costDataset + "/s" + s);
-
 			scales[s] = new double[]{scale, scale, scale};
 		}
 		System.out.println("Done reading rawMipmaps");
 		System.out.println("Time: " + LocalDateTime.now());
 
+		RandomAccessibleInterval<UnsignedByteType> dsCost = N5Utils.openVolatile( n5, costDataset );
+		costDSFactors = n5.getAttribute(costDataset, "downsamplingFactors", double[].class);
+
+		RandomAccessibleInterval<DoubleType> cost =
+			Views.interval(
+				Views.raster(
+					RealViews.affineReal(
+						Views.interpolate(
+								Views.extendBorder(
+									Converters.convert(
+										(RandomAccessibleInterval<UnsignedByteType>)Views.permute(dsCost, 1, 2),
+										(a, x) -> x.setReal(a.getRealDouble()),
+										new DoubleType())),
+								new NLinearInterpolatorFactory<>()),
+						new Translation3D(
+								(costDSFactors[0] - 1) * 0.5,
+								(costDSFactors[2] - 1) * 0.5,
+								(costDSFactors[1] - 1) * 0.5))),
+				rawMipmaps[0]);
+
 		System.out.println("rawMipmaps[0]: " + rawMipmaps[0].dimension(0) + " " + rawMipmaps[0].dimension(1) + " " + rawMipmaps[0].dimension(2));
-		System.out.println("costMipmaps[0]: " + costMipmaps[0].dimension(0) + " " + costMipmaps[0].dimension(1) + " " + costMipmaps[0].dimension(2));
+		System.out.println("downsampled cost: " + dsCost.dimension(0) + " " + dsCost.dimension(1) + " " + dsCost.dimension(2));
 
 		final int numProc = Runtime.getRuntime().availableProcessors();
 		final SharedQueue queue = new SharedQueue(Math.min(8, Math.max(1, numProc - 2)));
 
 		FinalInterval sourceInterval = null;
-//		if( max != null && min != null ) {
-//			// If we have heightmaps, then we can define a crop interval for source rendering
-//			DoubleType maxMean = SemaUtils.getAvgValue(max);
-//			DoubleType minMean = SemaUtils.getAvgValue(min);
-//
-//			sourceInterval = new FinalInterval(
-//				new long[] {0, 0, Math.round(minMean.get()) - padding},
-//				new long[] {dimensions[0] - 1, dimensions[2] - 1, Math.round(maxMean.get()) + padding});
-//		} else {
+
         sourceInterval = new FinalInterval(
             new long[] {0, 0, 0},
             new long[] {dimensions[0] - 1, dimensions[2] - 1, dimensions[1] -1});// FIXME double check this dimension swap, it came from saalfeld's hot-knife ViewFlattened
@@ -263,29 +223,18 @@ public class NailFlat implements Callable<Void> {
 		final IntervalView<DoubleType> zRange = Views.interval(
 				zRange(minMean, maxMean, 255, 1),
 				new long[]{0, 0, Math.round(minMean) - padding},
-				new long[]{rawMipmaps[0].dimension(0), rawMipmaps[0].dimension(2), Math.round(maxMean) + padding});
+				new long[]{sourceInterval.dimension(0), sourceInterval.dimension(2), Math.round(maxMean) + padding});
 
 		final Interval zCropInterval = zRange;
 
 		// TODO: Height maps contain NaN's and sometimes strong negative numbers
 		//ImageJFunctions.show(min);
 
-		double transformScaleX = 6;
-		double transformScaleY = 6;
-		final Scale2D transformScale = new Scale2D(transformScaleX, transformScaleY);
-		final FlattenTransform ft = new FlattenTransform(
-								RealViews.affine(
-										Views.interpolate(
-												Views.extendBorder(min),
-												new NLinearInterpolatorFactory<>()),
-										transformScale),
-								RealViews.affine(
-										Views.interpolate(
-												Views.extendBorder(max),
-												new NLinearInterpolatorFactory<>()),
-										transformScale),
-								minMean,
-								maxMean);
+		final FlattenTransform ft = new FlattenTransform<>(
+					Transform.scaleAndShiftHeightFieldAndValues(min, downsamplingFactors),
+					Transform.scaleAndShiftHeightFieldAndValues(max, downsamplingFactors),
+					(minMean + 0.5) * downsamplingFactors[2] - 0.5,
+					(maxMean + 0.5) * downsamplingFactors[2] - 0.5);
 
 		final RandomAccessibleInterval<DoubleType> heightmapRai =
 				Transform.createTransformedInterval(
@@ -339,7 +288,7 @@ public class NailFlat implements Callable<Void> {
 		bw.setImagej(imagej);
 		bw.setIsMovingDisplayTransformed(true);
         //bw.setIsMovingDisplayTransformed(false);
-		bw.setFullSizeInterval(Intervals.createMinMax(0, 0, 0, dimensions[0]-1, dimensions[2]-1, dimensions[1]-1));
+		bw.setFullSizeInterval(sourceInterval);
 		bw.setRawMipmaps(rawMipmaps);
 		bw.setQueue(queue);
 		bw.setMinHeightmap(min);
@@ -353,15 +302,11 @@ public class NailFlat implements Callable<Void> {
 		bw.setMinMean(minMean);
 		bw.setMaxMean(maxMean);
 
-		//bw.setCost(cost);
-		bw.setCost(costMipmaps[0]);
-		bw.setCostStepData(costStep);
+		bw.setCost(cost);
+		bw.setCostStepData((int) costDSFactors[0]);
+		bw.setHeightmapDownsamplingFactors(downsamplingFactors);
 
 		bw.setUpdateWarpOnChange(false);
-
-		// Load nails from N5
-		//System.out.println(bw.getTransformation());
-		//bw.loadNails(n5Path, flattenDataset + nailDataset);// FIXME and see the --resume argument
 
 		// Trigger the first computation of the flatten transform
 		bw.restimateTransformation(true);
@@ -374,66 +319,6 @@ public class NailFlat implements Callable<Void> {
 		System.out.println("ctrl-f - Export flatten heightmap and nails\n");
 
 		return null;
-	}
-
-	private Source<?> makeCostSource(RandomAccessibleInterval<UnsignedByteType>[] costMipmaps, double[][] scales, FinalVoxelDimensions voxelDimensions, String inputDataset, FinalInterval cropInterval, boolean useVolatile, FlattenTransform ft, SharedQueue queue) throws IOException {
-		@SuppressWarnings("unchecked")
-		final RandomAccessibleInterval<UnsignedByteType>[] mipmaps = new RandomAccessibleInterval[scales.length];
-
-		for (int s = 0; s < scales.length; ++s) {
-
-			final int scale = (int) scales[s][0];
-			final double inverseScale = 1.0 / scale;
-
-			final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
-			final Scale3D scale3D = new Scale3D(inverseScale, inverseScale, inverseScale);
-			final Translation3D shift = new Translation3D(0.5 * (scale - 1), 0.5 * (scale - 1), 0.5 * (scale - 1));
-			transformSequenceFlat.add(shift);
-			if( ft != null )
-				transformSequenceFlat.add(ft.inverse());
-			transformSequenceFlat.add(shift.inverse());
-			transformSequenceFlat.add(scale3D);
-
-			final RandomAccessibleInterval<UnsignedByteType> originalSource =
-					Transform.createTransformedInterval(
-							//Views.permute(costMipmaps[s], 1, 2),
-							costMipmaps[s],
-							cropInterval,
-							scale3D,
-							new UnsignedByteType(0));
-
-			final SubsampleIntervalView<UnsignedByteType> subsampledOriginalSource = Views.subsample(originalSource, scale);
-			final RandomAccessibleInterval<UnsignedByteType> cachedOriginalSource = Show.wrapAsVolatileCachedCellImg(subsampledOriginalSource, new int[]{32, 32, 32});
-
-			if( useVolatile ) {
-				mipmaps[s] = cachedOriginalSource;
-			} else {
-				mipmaps[s] = subsampledOriginalSource;
-			}
-			scales[s] = new double[]{scale, scale, scale};
-		}
-
-		/*
-		 * update when transforms change
-		 */
-
-		final RandomAccessibleIntervalMipmapSource<?> mipmapSourceOriginal =
-				new RandomAccessibleIntervalMipmapSource<>(
-						mipmaps,
-						new UnsignedByteType(),
-						scales,
-						voxelDimensions,
-						inputDataset);
-
-		final Source<?> volatileMipmapSourceFlat;
-		final Source<?> volatileMipmapSourceOriginal;
-		if ( useVolatile ) {
-			volatileMipmapSourceOriginal = mipmapSourceOriginal.asVolatile(queue);
-		} else {
-			volatileMipmapSourceOriginal = mipmapSourceOriginal;
-		}
-
-		return volatileMipmapSourceOriginal;
 	}
 
 
