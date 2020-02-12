@@ -43,14 +43,12 @@ import mpicbg.spim.data.SpimData;
 import mpicbg.spim.data.XmlIoSpimData;
 import mpicbg.spim.data.registration.ViewTransformAffine;
 import mpicbg.spim.data.sequence.FinalVoxelDimensions;
-import net.imagej.ops.OpService;
 import net.imglib2.*;
 import net.imglib2.RandomAccess;
 import net.imglib2.algorithm.gauss3.Gauss3;
 import net.imglib2.algorithm.gauss3.SeparableSymmetricConvolution;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.converter.Converters;
-import net.imglib2.img.Img;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgs;
 import net.imglib2.img.array.ArrayRandomAccess;
@@ -58,15 +56,11 @@ import net.imglib2.img.basictypeaccess.array.DoubleArray;
 import net.imglib2.img.cell.Cell;
 import net.imglib2.img.cell.CellRandomAccess;
 import net.imglib2.img.display.imagej.ImageJFunctions;
-import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.position.FunctionRandomAccessible;
 import net.imglib2.realtransform.*;
-import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
-import net.imglib2.util.Intervals;
-import net.imglib2.util.Pair;
 import net.imglib2.util.RealSum;
 import net.imglib2.view.IntervalView;
 import net.imglib2.view.SubsampleIntervalView;
@@ -101,7 +95,6 @@ import bdv.gui.LandmarkKeyboardProcessor;
 import bdv.gui.TransformTypeSelectDialog;
 import bdv.ij.ApplyBigwarpPlugin;
 import bdv.ij.BigWarpToDeformationFieldPlugIn;
-import bdv.ij.util.ProgressWriterIJ;
 import bdv.img.WarpedSource;
 import bdv.tools.InitializeViewerState;
 import bdv.tools.VisibilityAndGroupingDialog;
@@ -174,7 +167,6 @@ import net.imglib2.ui.TransformEventHandler;
 import net.imglib2.ui.TransformListener;
 import net.imglib2.view.Views;
 
-import static net.preibisch.surface.SurfaceFitCommand.*;
 import static net.preibisch.surface.Test.process2;
 
 public class BigWarp< T >
@@ -350,9 +342,9 @@ public class BigWarp< T >
 	private RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps;
 	private boolean useVolatile;
 	private SharedQueue queue;
-	private RandomAccessibleInterval<DoubleType> minHeightmap;
-	private RandomAccessibleInterval<DoubleType> maxHeightmap;
-	private RandomAccessibleInterval<UnsignedByteType> cost;
+	private RandomAccessibleInterval<FloatType> minHeightmap;
+	private RandomAccessibleInterval<FloatType> maxHeightmap;
+	private RandomAccessibleInterval<DoubleType> cost;
 	private FinalVoxelDimensions voxelDimensions;
 	private double[][] scales;
 	private String name;
@@ -372,6 +364,7 @@ public class BigWarp< T >
 	private CopyOnWriteArrayList< TransformListener< InvertibleRealTransform > > transformListeners = new CopyOnWriteArrayList<>( );
 	private double minMean;
 	private double maxMean;
+	private double[] heightmapDownsamplingFactors;
 
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2211,15 +2204,15 @@ public class BigWarp< T >
 		this.movingImageXml = movingImageXml;
 	}
 
-	public void setMinHeightmap(RandomAccessibleInterval<DoubleType> min) {
+	public void setMinHeightmap(RandomAccessibleInterval<FloatType> min) {
 		this.minHeightmap = min;
 	}
 
-	public void setMaxHeightmap(RandomAccessibleInterval<DoubleType> max) {
+	public void setMaxHeightmap(RandomAccessibleInterval<FloatType> max) {
 		this.maxHeightmap = max;
 	}
 
-	public void setCost(RandomAccessibleInterval<UnsignedByteType> cost) {
+	public void setCost(RandomAccessibleInterval<DoubleType> cost) {
 		this.cost = cost;
 	}
 
@@ -2274,16 +2267,16 @@ public class BigWarp< T >
 
     public void saveFlatten() throws IOException {
         N5FSWriter n5 = new N5FSWriter(n5Path);
-        N5Utils.save( minHeightmap, n5, flattenDataset + minFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
-        N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
+        N5Utils.save( minHeightmap, n5, flattenDataset + "/min", new int[]{1024, 1024}, new RawCompression() );
+        N5Utils.save( maxHeightmap, n5, flattenDataset + "/max", new int[]{1024, 1024}, new RawCompression() );
 
         // At this point the min and max heightmaps are updated to account for the nails
 //        DoubleType minMean = SemaUtils.getAvgValue(minHeightmap);
 //        DoubleType maxMean = SemaUtils.getAvgValue(maxHeightmap);
 
-        n5.setAttribute(flattenDataset + minFaceDatasetName, "mean", minMean);
-        n5.setAttribute(flattenDataset + maxFaceDatasetName, "mean", maxMean);
-        System.out.println("Saving heightmaps (into n5): " + flattenDataset + minFaceDatasetName + " " + flattenDataset + maxFaceDatasetName);
+        n5.setAttribute(flattenDataset + "/min", "avg", minMean);
+        n5.setAttribute(flattenDataset + "/max", "avg", maxMean);
+        System.out.println("Saving heightmaps (into n5): " + flattenDataset + "/min" + " " + flattenDataset + "/max");
 
         // Now save nails
         // TODO Consider reading existing nails and appending?
@@ -2310,7 +2303,7 @@ public class BigWarp< T >
 	    this.flattenDataset = flattenDataset;
     }
 
-	public RandomAccessibleInterval<DoubleType> getCorrespondingHeightmap(Double z) {
+	public RandomAccessibleInterval<FloatType> getCorrespondingHeightmap(Double z) {
 		long offset;
 		if (z > (float) (rawMipmaps[0].dimension(2)) / 2.0 && z > (float) (rawMipmaps[0].dimension(2)) / 2.0) {
 			// Max heightmap
@@ -2366,6 +2359,14 @@ public class BigWarp< T >
 
 	public double getMaxMean() {
 		return maxMean;
+	}
+
+	public void setHeightmapDownsamplingFactors(double[] heightmapDownsamplingFactors) {
+		this.heightmapDownsamplingFactors = heightmapDownsamplingFactors;
+	}
+
+	public double[] getHeightmapDownsamplingFactors() {
+		return heightmapDownsamplingFactors;
 	}
 
 	public enum WarpVisType
@@ -3471,16 +3472,13 @@ public class BigWarp< T >
 
 						// NOTE: costImg is expected to already be subsampled at <costStep> interval along axis 2 (before this permutation)
 						// Therefore we subsample along X as well to stay isotropic
-						RandomAccessibleInterval<DoubleType> costImg =
-								Views.subsample(
-									Views.permute(bw.getCostImg(), 1, 2),
-									costStep,1,1);
+						RandomAccessibleInterval<DoubleType> costImg = bw.getCostImg();
 
 						long[] dimensions = new long[3];
-						costImg.dimensions(dimensions);
-						//bw.rawMipmaps[0].dimensions(dimensions);
+						//costImg.dimensions(dimensions);
+						bw.rawMipmaps[0].dimensions(dimensions);
 
-                        System.out.println("cost dimensions: " + dimensions[0] + " " + dimensions[1] + " " + dimensions[2]);
+                        //System.out.println("cost dimensions: " + dimensions[0] + " " + dimensions[1] + " " + dimensions[2]);
                         System.out.println("rawmipmap[0] dimensions: " + bw.rawMipmaps[0].dimension(0) + " " + bw.rawMipmaps[0].dimension(1) + " " + bw.rawMipmaps[0].dimension(2));
 
 						// Now process the nails
@@ -3488,9 +3486,6 @@ public class BigWarp< T >
 
                         // Open our N5 reader now so we can get mean values from heightmaps
                         N5FSReader n5 = new N5FSReader(bw.n5Path);
-
-//                        double minMean = n5.getAttribute(bw.flattenDataset + BigWarp.minFaceDatasetName, "mean", double.class);
-//						double maxMean = n5.getAttribute(bw.flattenDataset + BigWarp.maxFaceDatasetName, "mean", double.class);
 
                         if( nails.size() > 0 ) {
                         	System.out.println("Applying " + nails.size() + "  nails");
@@ -3502,14 +3497,14 @@ public class BigWarp< T >
 							// Convert nail padding into subsampled space
 							long[] nailPadding = new long[]{paddingXY / costStep, paddingXY / costStep, paddingZ};
 
-							RandomAccess<DoubleType> hmMinAccess = bw.minHeightmap.randomAccess();
-							RandomAccess<DoubleType> hmMaxAccess = bw.maxHeightmap.randomAccess();
+							RandomAccess<FloatType> hmMinAccess = bw.minHeightmap.randomAccess();
+							RandomAccess<FloatType> hmMaxAccess = bw.maxHeightmap.randomAccess();
 
 							for (int k = 0; k < nails.size(); k++) {
 
 								long[] nail = new long[]{
-										Math.round(nails.get(k)[0] / costStep),
-										Math.round(nails.get(k)[1] / costStep),
+										Math.round(nails.get(k)[0] / bw.getHeightmapDownsamplingFactors()[0]),
+										Math.round(nails.get(k)[1] / bw.getHeightmapDownsamplingFactors()[0]),
 										nails.get(k)[2].longValue()};
 
 								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
@@ -3567,7 +3562,7 @@ public class BigWarp< T >
 							}
 
 							// This logic is risky FIXME
-							RandomAccessibleInterval<DoubleType> heightmap;
+							RandomAccessibleInterval<FloatType> heightmap;
 							long offset;
 							if (regionMin[2] > (float) (dimensions[2]) / 2.0 && regionMax[2] > (float) (dimensions[2]) / 2.0) {
 								// Max heightmap
@@ -3582,7 +3577,7 @@ public class BigWarp< T >
 							}
 
 							// Nail along the border (performed in sampled coords, but with correct origin/min)
-							bw.nailRegionBorder(nailRegion, heightmap,additionalHeigthmapOffset);
+							bw.nailRegionBorder(nailRegion, heightmap, additionalHeigthmapOffset);
 							System.out.println("Region border has been nailed");
 
 							// Now apply nails
@@ -3625,7 +3620,7 @@ public class BigWarp< T >
 //							System.out.println("Replacement patch average value: " + SemaUtils.getAvgValue(heightmapPatch));
 
 							// Copy the patch into the heightmap
-							net.imglib2.Cursor<DoubleType> hmCursor = Views.flatIterable(Views.interval(heightmap, heightmapPatch)).cursor();
+							net.imglib2.Cursor<FloatType> hmCursor = Views.flatIterable(Views.interval(heightmap, heightmapPatch)).cursor();
 							net.imglib2.Cursor<DoubleType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
 
 							RealSum prevPatchSum = new RealSum();
@@ -3636,7 +3631,7 @@ public class BigWarp< T >
 
 								prevPatchSum.add(hmCursor.get().get());
 
-								hmCursor.get().set(patchCursor.get().get() + offset - 1 + additionalHeigthmapOffset);
+								hmCursor.get().set((float) (patchCursor.get().get() + offset - 1 + additionalHeigthmapOffset));
 							}
 
 							ImageJFunctions.wrap(Views.interval(heightmap, heightmapPatch),"patched offset HM").show();
@@ -3660,7 +3655,7 @@ public class BigWarp< T >
 
 								double v = patchCursor.get().get();
 
-								hmCursor.get().set(v);
+								hmCursor.get().set((float) v);
 
 								newPatchSum.add(v);
 							}
@@ -3683,19 +3678,11 @@ public class BigWarp< T >
                         // TODO maybe always read from cache
                         System.out.println("minY is " +  bw.minMean + " and maxY is " + bw.maxMean);
 
-						final FlattenTransform ft = new FlattenTransform(
-								RealViews.affine(
-										Views.interpolate(
-												Views.extendBorder(bw.minHeightmap),
-												new NLinearInterpolatorFactory<>()),
-										transformScale),
-								RealViews.affine(
-										Views.interpolate(
-												Views.extendBorder(bw.maxHeightmap),
-												new NLinearInterpolatorFactory<>()),
-										transformScale),
-								bw.minMean,
-								bw.maxMean);
+						final FlattenTransform ft = new FlattenTransform<>(
+									Transform.scaleAndShiftHeightFieldAndValues(bw.minHeightmap, bw.getHeightmapDownsamplingFactors()),
+									Transform.scaleAndShiftHeightFieldAndValues(bw.maxHeightmap, bw.getHeightmapDownsamplingFactors()),
+									(bw.minMean + 0.5) * bw.getHeightmapDownsamplingFactors()[2] - 0.5,
+									(bw.maxMean + 0.5) * bw.getHeightmapDownsamplingFactors()[2] - 0.5);
 
                         bw.currentTransform = ft;
 						//bw.currentTransform = ft.inverse();// this is here to help with debugging transforms and nail placement
@@ -3824,11 +3811,11 @@ public class BigWarp< T >
 	 * @param costRegion, in subsampled coordinates, with the correct min
 	 * @param heightmap
 	 */
-    private void nailRegionBorder(RandomAccessibleInterval<DoubleType> costRegion, RandomAccessibleInterval<DoubleType> heightmap, final double additionalOffset) {
+    private void nailRegionBorder(RandomAccessibleInterval<DoubleType> costRegion, RandomAccessibleInterval<FloatType> heightmap, final double additionalOffset) {
 	    // Nail periphery to the heightmap along X
         long[] crPos = new long[3];// for costRegion
         RandomAccess<DoubleType> crAccess = costRegion.randomAccess();
-        RandomAccess<DoubleType> hmAccess = heightmap.randomAccess();
+        RandomAccess<FloatType> hmAccess = heightmap.randomAccess();
 
         // Nail along X border (at min/max Y of interval)
         for( long x = costRegion.min(0); x <= costRegion.max(0); x++ ) {
@@ -3896,8 +3883,7 @@ public class BigWarp< T >
 	}
 
 	private RandomAccessibleInterval<DoubleType> getCostImg() {
-		RandomAccessibleInterval<DoubleType> rai = Converters.convert(cost, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
-		return rai;
+		return cost;
 	}
 
 	public static Source<?>[] makeFlatAndOriginalSource(RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps,
