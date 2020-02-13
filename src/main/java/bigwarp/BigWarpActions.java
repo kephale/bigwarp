@@ -3,6 +3,7 @@ package bigwarp;
 import java.awt.Component;
 import java.awt.event.ActionEvent;
 import java.io.IOException;
+import java.util.Arrays;
 
 import javax.swing.ActionMap;
 import javax.swing.InputMap;
@@ -1190,6 +1191,9 @@ public class BigWarpActions
 		}
 	}
 
+	public static int gridFactor = 1;
+	public static int gridRadius = 10;
+
 	public static class GenerateNailsAction extends AbstractNamedAction
 	{
 //		private static final long serialVersionUID = 4965249994677649713L;
@@ -1204,34 +1208,49 @@ public class BigWarpActions
 		public void actionPerformed(ActionEvent e)
 		{
 			int activeRow = bw.landmarkModel.getActiveRowCount();
-			Double[] pt = bw.landmarkModel.getPoint(false, activeRow-1);
+			Double[] pt = Arrays.copyOf(bw.landmarkModel.getPoint(false, activeRow-1),3);
 
 			pt[0] /= bw.getCostStep();
 			pt[1] /= bw.getCostStep();
 
 			System.out.println("Generating nail grid");
 
+			GenericDialog gd = new GenericDialog("Nail grid dialog");
+			gd.addNumericField("Step between nail (will be multipled by " + bw.getCostStep() + "):", gridFactor, 0);
+			gd.addNumericField("Grid size:", gridRadius, 0);
+			gd.showDialog();
+
+			if (gd.wasCanceled()) return;
+			gridFactor = (int) gd.getNextNumber();
+			gridRadius = (int) gd.getNextNumber();
+
 			RandomAccessibleInterval<FloatType> heightmap = bw.getCorrespondingHeightmap(pt[2]);
 			RandomAccess<FloatType> hmAccess = heightmap.randomAccess();
 			long[] pos = new long[2];
 
-			int gridRadius = 10;
-			for(double x = pt[0] - gridRadius; x < pt[0] + gridRadius; x++) {
+			for(double x = pt[0] - gridRadius; x <= pt[0] + gridRadius; x += gridFactor) {
 				pos[0] = (long) x;
-				for(double y = pt[1] - gridRadius; y < pt[1] + gridRadius; y++) {
+				for(double y = pt[1] - gridRadius; y <= pt[1] + gridRadius; y += gridFactor) {
 					pos[1] = (long) y;
-					hmAccess.setPosition(pos);
-					double[] ptarrayLoc = new double[]{x * bw.getCostStep(), y * bw.getCostStep(), hmAccess.get().get()};
-					double[] ptBackLoc = new double[3];
 
-					bw.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
-					//BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);// TODO this was the previous
-					bw.addPoint( ptBackLoc, true, bw.viewerP );
+					// Skip center
+					if( !(x == pt[0] && y == pt[1]) ) {
 
-					// can use this to sanity check, but the P points need to be stored in transformed coords
-					//addPoint( ptarrayLoc, true, viewerP );
+						hmAccess.setPosition(pos);
+						double[] ptarrayLoc = new double[]{x * bw.getCostStep(), y * bw.getCostStep(), hmAccess.get().get()};
+						double[] ptBackLoc = new double[3];
 
-					bw.addPoint( ptarrayLoc, false, bw.viewerQ );
+						bw.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
+						//BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);// TODO this was the previous
+						bw.addPoint(ptBackLoc, true, bw.viewerP);
+
+						// can use this to sanity check, but the P points need to be stored in transformed coords
+						//addPoint( ptarrayLoc, true, viewerP );
+
+						//System.out.println("Add grid point: " + ptarrayLoc[0] + " " + ptarrayLoc[1] + " " + ptarrayLoc[2]);
+
+						bw.addPoint(ptarrayLoc, false, bw.viewerQ);
+					}
 
 				}
 			}

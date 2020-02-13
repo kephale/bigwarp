@@ -3041,6 +3041,10 @@ public class BigWarp< T >
 				// can use this to sanity check, but the P points need to be stored in transformed coords
 				//addPoint( ptarrayLoc, true, viewerP );
 
+                //System.out.println("Add fixed point: " + ptarrayLoc[0] + " " + ptarrayLoc[1] + " " + ptarrayLoc[2]);
+
+                //currentLandmark.setPosition(ptarrayLoc);
+
 				addPoint( ptarrayLoc, false, viewerQ );
 			}
 
