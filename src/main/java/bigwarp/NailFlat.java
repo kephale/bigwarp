@@ -402,7 +402,8 @@ public class NailFlat implements Callable<Void> {
 		RandomAccessibleInterval<DoubleType> costInterp =
 				Transform.createTransformedInterval(
 						costDouble,
-						rawMipmaps[0],
+						costDouble,
+						//rawMipmaps[0],
 						new Translation3D(( costDownsample[0] - 1 ) * 0.5, 0, ( costDownsample[2] - 1 ) * 0.5),
 //						new ScaleAndTranslation(
 //								scales[costMipmapToUse],

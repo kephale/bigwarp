@@ -336,7 +336,7 @@ public class BigWarp< T >
 
 	private static double nailPenalty = 10000;//Double.MAX_VALUE;
     //private static double nailPenalty = 1000;
-	private static int costStep = 8;
+
 
 	private long flattenPadding = 2000;
 	//private long nailPadding = costStep * 10;
@@ -360,7 +360,7 @@ public class BigWarp< T >
 	private String flattenDataset;
 
 	// Cost step data is the step size of the cost data (1 means full resolution, e.g. 6 means every 6 slices)
-	private int costStepData = 1;
+	private static int costStepData = 1;
 
     // These are subdatasets of flatten, such that multiple flattening attempts can be supported
     public static String minFaceDatasetName = "/heightmaps/min";
@@ -2320,6 +2320,10 @@ public class BigWarp< T >
 		}
 	}
 
+	public int getCostStepData() {
+		return this.costStepData;
+	}
+
 	public void setCostStepData(int costStep) {
 		this.costStepData = costStep;
 	}
@@ -3027,8 +3031,8 @@ public class BigWarp< T >
             {
 				currentLandmark.localize( ptarrayLoc );
 
-				ptarrayLoc[0] = Math.round( ptarrayLoc[0] / costStep ) * costStep;
-				ptarrayLoc[1] = Math.round( ptarrayLoc[1] / costStep ) * costStep;
+				ptarrayLoc[0] = Math.round( ptarrayLoc[0] / getCostStep() ) * getCostStep();
+				ptarrayLoc[1] = Math.round( ptarrayLoc[1] / getCostStep() ) * getCostStep();
 
 				BigWarp.this.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
 				//BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);// TODO this was the previous
@@ -3502,7 +3506,7 @@ public class BigWarp< T >
 							long[] regionMax = new long[]{0, 0, 0};
 
 							// Convert nail padding into subsampled space
-							long[] nailPadding = new long[]{paddingXY / costStep, paddingXY / costStep, paddingZ};
+							long[] nailPadding = new long[]{paddingXY / bw.getCostStep(), paddingXY / bw.getCostStep(), paddingZ};
 
 							RandomAccess<FloatType> hmMinAccess = bw.minHeightmap.randomAccess();
 							RandomAccess<FloatType> hmMaxAccess = bw.maxHeightmap.randomAccess();
@@ -3510,8 +3514,8 @@ public class BigWarp< T >
 							for (int k = 0; k < nails.size(); k++) {
 
 								long[] nail = new long[]{
-										Math.round(nails.get(k)[0] / costStep),
-										Math.round(nails.get(k)[1] / costStep),
+										Math.round(nails.get(k)[0] / bw.getCostStep()),
+										Math.round(nails.get(k)[1] / bw.getCostStep()),
 										nails.get(k)[2].longValue()};
 
 								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
@@ -4005,8 +4009,8 @@ public class BigWarp< T >
         long[] gridNail = new long[]{0, 0, Math.round(nail[2])};
 
         // Convert the nail into subsampled coordinates
-        gridNail[0] = Math.round(nail[0] / costStep);
-        gridNail[1] = Math.round(nail[1] / costStep);
+        gridNail[0] = Math.round(nail[0] / getCostStep());
+        gridNail[1] = Math.round(nail[1] / getCostStep());
 
         long[] pos = new long[]{gridNail[0], gridNail[1], 0};
 
@@ -4305,7 +4309,7 @@ public class BigWarp< T >
 		this.queue = queue;
 	}
 
-	public int getCostStep() { return costStep; }
+	public static int getCostStep() { return costStepData; }
 
 	// From hotknife
 	public static final FunctionRandomAccessible<DoubleType> zRange(
