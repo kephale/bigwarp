@@ -107,7 +107,7 @@ public class NailFlat implements Callable<Void> {
 			args = new String[]{
 			        "-i", "/nrs/flyem/tmp/VNC.n5",
 					"-d", "/zcorr/Sec03___20200110_121405",
-					"-f", "/heightfields/Sec03_20200206_162201_kyle01",
+					"-f", "/heightfields/Sec03_20200206_162201_revision01",
 					"-s", "/cost/Sec03_20200206_162201",
 //					"-u"
 					"--heightmaps", "/heightfields/Sec03_20200206_162201/s1"

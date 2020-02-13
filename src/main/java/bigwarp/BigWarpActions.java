@@ -1146,7 +1146,7 @@ public class BigWarpActions
 
 			GenericDialog gd = new GenericDialog("Flatten dialog");
 			gd.addNumericField("Max delta (graph cut):", maxDelta, 0);
-			gd.addNumericField("Sigma Cost Function (on subsampled):", sigmaCost, 1);
+			//gd.addNumericField("Sigma Cost Function (on subsampled):", sigmaCost, 1);
 			gd.addNumericField("Sigma Heightmap (on subsampled):", sigmaHeightmap, 1);
 			gd.addNumericField("X/Y padding radius:", xyPadding, 0);
 			gd.addNumericField("Z padding radius (negative means autodetect):", zPadding, 0);
@@ -1157,7 +1157,7 @@ public class BigWarpActions
 
 			if (gd.wasCanceled()) return;
 			bw.setSmoothingConstraint(maxDelta = (int) gd.getNextNumber());
-			bw.setSigmaCost( sigmaCost = gd.getNextNumber() );
+			//bw.setSigmaCost( sigmaCost = gd.getNextNumber() );
 			bw.setSigmaHeightmap( sigmaHeightmap = gd.getNextNumber() );
 			bw.setPaddingXY(xyPadding = (int) gd.getNextNumber());
 			bw.setPaddingZ(zPadding = (int) gd.getNextNumber());

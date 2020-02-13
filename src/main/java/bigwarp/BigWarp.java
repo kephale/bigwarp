@@ -363,8 +363,8 @@ public class BigWarp< T >
 	private static int costStepData = 1;
 
     // These are subdatasets of flatten, such that multiple flattening attempts can be supported
-    public static String minFaceDatasetName = "/heightmaps/min";
-	public static String maxFaceDatasetName = "/heightmaps/max";
+    public static String minFaceDatasetName = "/min";
+	public static String maxFaceDatasetName = "/max";
 	public static String nailDatasetName = "/nails";
 	// end SEMA additions
 
@@ -3477,8 +3477,7 @@ public class BigWarp< T >
 						//InvertibleRealTransform invXfm = bw.getTransformation( index );
 						final Scale2D transformScale = new Scale2D(bw.getCostStep(), bw.getCostStep());
 
-						// NOTE: costImg is expected to already be subsampled at <costStep> interval along axis 2 (before this permutation)
-						// Therefore we subsample along X as well to stay isotropic
+						// NOTE: costImg is expected to already be subsampled
 						RandomAccessibleInterval<DoubleType> costImg =
 									Views.permute(bw.getCostImg(), 1, 2);
 
@@ -3544,11 +3543,11 @@ public class BigWarp< T >
 							System.out.println("Max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
 							// TODO: Use RA-Op instead of RAI op
-							double[] smoothingSigmas = new double[]{sigmaCost, sigmaCost, 0};
-							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
-
-							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
-							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
+//							double[] smoothingSigmas = new double[]{sigmaCost, sigmaCost, 0};
+//							int[] hks = Gauss3.halfkernelsizes(smoothingSigmas);
+//
+//							long[] regionMinPad = new long[]{regionMin[0] - hks[0], regionMin[1] - hks[1], regionMin[2] - hks[2]};
+//							long[] regionMaxPad = new long[]{regionMax[0] + hks[0], regionMax[1] + hks[1], regionMax[2] + hks[2]};
 
 							// grab a larger cost region
 //							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
