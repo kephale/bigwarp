@@ -16,6 +16,7 @@ import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
 import net.imglib2.type.numeric.real.DoubleType;
+import net.imglib2.type.numeric.real.FloatType;
 import org.scijava.ui.behaviour.KeyStrokeAdder;
 import org.scijava.ui.behaviour.util.AbstractNamedAction;
 import org.scijava.ui.behaviour.util.InputActionBindings;
@@ -1205,19 +1206,22 @@ public class BigWarpActions
 			int activeRow = bw.landmarkModel.getActiveRowCount();
 			Double[] pt = bw.landmarkModel.getPoint(false, activeRow-1);
 
+			pt[0] /= bw.getCostStep();
+			pt[1] /= bw.getCostStep();
+
 			System.out.println("Generating nail grid");
 
-			RandomAccessibleInterval<DoubleType> heightmap = bw.getCorrespondingHeightmap(pt[2]);
-			RandomAccess<DoubleType> hmAccess = heightmap.randomAccess();
+			RandomAccessibleInterval<FloatType> heightmap = bw.getCorrespondingHeightmap(pt[2]);
+			RandomAccess<FloatType> hmAccess = heightmap.randomAccess();
 			long[] pos = new long[2];
 
-			int gridRadius = bw.getCostStep() * 10;
-			for(double x = pt[0] - gridRadius; x < pt[0] + gridRadius; x+=bw.getCostStep()) {
+			int gridRadius = 10;
+			for(double x = pt[0] - gridRadius; x < pt[0] + gridRadius; x++) {
 				pos[0] = (long) x;
-				for(double y = pt[1] - gridRadius; y < pt[1] + gridRadius; y+=bw.getCostStep()) {
+				for(double y = pt[1] - gridRadius; y < pt[1] + gridRadius; y++) {
 					pos[1] = (long) y;
 					hmAccess.setPosition(pos);
-					double[] ptarrayLoc = new double[]{x, y, hmAccess.get().get()};
+					double[] ptarrayLoc = new double[]{x * bw.getCostStep(), y * bw.getCostStep(), hmAccess.get().get()};
 					double[] ptBackLoc = new double[3];
 
 					bw.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);

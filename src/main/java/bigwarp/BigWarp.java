@@ -2312,7 +2312,7 @@ public class BigWarp< T >
 
 	public RandomAccessibleInterval<FloatType> getCorrespondingHeightmap(Double z) {
 		long offset;
-		if (z > (float) (rawMipmaps[0].dimension(2)) / 2.0 && z > (float) (rawMipmaps[0].dimension(2)) / 2.0) {
+		if (z > (float) (cost.dimension(2)) / 2.0 && z > (float) (cost.dimension(2)) / 2.0) {
 			// Max heightmap
 			return maxHeightmap;
 		} else {
