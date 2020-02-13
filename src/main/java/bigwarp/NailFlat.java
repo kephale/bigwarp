@@ -73,15 +73,13 @@ public class NailFlat implements Callable<Void> {
         static String[] argsSec02 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec02___20200114_103029",
-            "-f", "/heightfields/Sec03_20200206_162201_revision01",
             "-s", "/cost/Sec02_20200206_152322",
-            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
+            "--heightmaps", "/heightfields/Sec02_20200206_152322/s1"
     };
 
     static String[] argsSec03 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec03___20200110_121405",
-            "-f", "/heightfields/Sec03_20200206_162201_revision01",
             "-s", "/cost/Sec03_20200206_162201",
             "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
     };
@@ -89,7 +87,6 @@ public class NailFlat implements Callable<Void> {
     static String[] argsSec04 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec04___20200110_114355",
-            "-f", "/heightfields/Sec04_20200207_92236_revision01",
             "-s", "/cost/Sec04_20200207_92236",
             "--heightmaps", "/heightfields/Sec04_20200207_92236/s1"
     };
@@ -97,7 +94,6 @@ public class NailFlat implements Callable<Void> {
     static String[] argsSec05 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec05___20200211_132910",
-            "-f", "/heightfields/Sec05_20200211_125137_revision01",
             "-s", "/cost/Sec05_20200213_1127",
             "--heightmaps", "/heightfields/Sec05_20200211_125137/s1"
     };
@@ -105,7 +101,6 @@ public class NailFlat implements Callable<Void> {
     static String[] argsSec06 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec06___20200130_110551",
-            "-f", "/heightfields/Sec06_20200213",
             "-s", "/cost/Sec06",
             "--heightmaps", "/heightfields/Sec06/s1"
     };
@@ -118,13 +113,13 @@ public class NailFlat implements Callable<Void> {
             "--heightmaps", "/heightfields/Sec07_20200207_113426/s1"
     };
 
-//    static String[] argsSec08 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec08___20200211_170942",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec08_20200212_85155",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
+    static String[] argsSec08 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec08___20200211_170942",
+            "-f", "/heightfields/Sec03_20200206_162201_revision01",
+            "-s", "/cost/Sec08_20200212_85155",
+            "--heightmaps", "/heightfields/Sec08_20200212_85155/s1"
+    };
 
 //    static String[] argsSec09 = new String[]{
 //            "-i", "/nrs/flyem/tmp/VNC.n5",
@@ -137,7 +132,6 @@ public class NailFlat implements Callable<Void> {
     static String[] argsSec10 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec10___20200206_113538",
-            "-f", "/heightfields/Sec10_20200208_155250_revision01",
             "-s", "/cost/Sec10_20200208_155250",
             "--heightmaps", "/heightfields/Sec10_20200208_155250/s1"
     };
@@ -145,130 +139,114 @@ public class NailFlat implements Callable<Void> {
     static String[] argsSec11 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec11___20200106_081745",
-            "-f", "/heightfields/Sec11_20200208_151432_revision01",
             "-s", "/cost/Sec11_20200208_151432",
             "--heightmaps", "/heightfields/Sec11_20200208_151432/s1"
     };
 
-//    static String[] argsSec12 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec12___20200210_153413",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec12_20200210_175133",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec13 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec13___20200110_160542",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec13_20200208_102626",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec14 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec14___20200106_085015",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec14_20200208_102754",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec15 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec15___20200205_113313",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec15_20200208_102958",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec16 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec16___20200207_111635",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec16_20200208_103706",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec17 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec17___20200207_111717",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec17_20200208_151438",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec18 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec18___20200206_133157",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec18_20200208_151851",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec19 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec19___20200203_085722",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec19_20200208_95359",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec20 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec20___20200207_113848",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec20_20200208_152048",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec21 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec21___20200106_084220",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec21_20200207_112747",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec22 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec22___20200106_083252",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec22_20200207_102130",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec23 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec23___20200211_133418",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec23_20200211_113117",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec24 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec24___20200106_082231",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec24_20200207_113242",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec25 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec25___20200106_082123",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec25_20200207_102546",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
-//
-//    static String[] argsSec26 = new String[]{
-//            "-i", "/nrs/flyem/tmp/VNC.n5",
-//            "-d", "/zcorr/Sec26___20200205_105758",
-//            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-//            "-s", "/cost/Sec26_20200207_102442",
-//            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
-//    };
+    static String[] argsSec12 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec12___20200210_153413",
+            "-s", "/cost/Sec12_20200210_175133",
+            "--heightmaps", "/heightfields/Sec12_20200210_175133/s1"
+    };
+
+    static String[] argsSec13 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec13___20200110_160542",
+            "-s", "/cost/Sec13_20200208_102626",
+            "--heightmaps", "/heightfields/Sec13_20200208_102626/s1"
+    };
+
+    static String[] argsSec14 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec14___20200106_085015",
+            "-s", "/cost/Sec14_20200208_102754",
+            "--heightmaps", "/heightfields/Sec14_20200208_102754/s1"
+    };
+
+    static String[] argsSec15 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec15___20200205_113313",
+            "-s", "/cost/Sec15_20200208_102958",
+            "--heightmaps", "/heightfields/Sec15_20200208_102958/s1"
+    };
+
+    static String[] argsSec16 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec16___20200207_111635",
+            "-s", "/cost/Sec16_20200208_103706",
+            "--heightmaps", "/heightfields/Sec16_20200208_103706/s1"
+    };
+
+    static String[] argsSec17 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec17___20200207_111717",
+            "-s", "/cost/Sec17_20200208_151438",
+            "--heightmaps", "/heightfields/Sec17_20200208_151438/s1"
+    };
+
+    static String[] argsSec18 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec18___20200206_133157",
+            "-s", "/cost/Sec18_20200208_151851",
+            "--heightmaps", "/heightfields/Sec18_20200208_151851/s1"
+    };
+
+    static String[] argsSec19 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec19___20200203_085722",
+            "-s", "/cost/Sec19_20200208_95359",
+            "--heightmaps", "/heightfields/Sec19_20200208_95359/s1"
+    };
+
+    static String[] argsSec20 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec20___20200207_113848",
+            "-s", "/cost/Sec20_20200208_152048",
+            "--heightmaps", "/heightfields/Sec20_20200208_152048/s1"
+    };
+
+    static String[] argsSec21 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec21___20200106_084220",
+            "-s", "/cost/Sec21_20200207_112747",
+            "--heightmaps", "/heightfields/Sec21_20200207_112747/s1"
+    };
+
+    static String[] argsSec22 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec22___20200106_083252",
+            "-s", "/cost/Sec22_20200207_102130",
+            "--heightmaps", "/heightfields/Sec22_20200207_102130/s1"
+    };
+
+    static String[] argsSec23 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec23___20200211_133418",
+            "-s", "/cost/Sec23_20200211_113117",
+            "--heightmaps", "/heightfields/Sec23_20200211_113117/s1"
+    };
+
+    static String[] argsSec24 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec24___20200106_082231",
+            "-s", "/cost/Sec24_20200207_113242",
+            "--heightmaps", "/heightfields/Sec24_20200207_113242/s1"
+    };
+
+    static String[] argsSec25 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec25___20200106_082123",
+            "-s", "/cost/Sec25_20200207_102546",
+            "--heightmaps", "/heightfields/Sec25_20200207_102546/s1"
+    };
+
+    static String[] argsSec26 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec26___20200205_105758",
+            "-s", "/cost/Sec26_20200207_102442",
+            "--heightmaps", "/heightfields/Sec26_20200207_102442/s1"
+    };
 
 	static int costMipmapToUse = 1;
 
