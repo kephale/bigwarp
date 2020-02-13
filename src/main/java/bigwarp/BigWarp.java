@@ -2954,7 +2954,7 @@ public class BigWarp< T >
 						BigWarp.this.landmarkModel.isActive( selectedPointIndex ) )
 				{
 					logger.trace("Drag resolve");
-					solverThread.requestResolve( isMoving, selectedPointIndex, ptarrayLoc );
+					//solverThread.requestResolve( isMoving, selectedPointIndex, ptarrayLoc );
 				}
 				else
 				{

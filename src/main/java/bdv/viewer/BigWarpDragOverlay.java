@@ -195,7 +195,7 @@ public class BigWarpDragOverlay
 				if( bw.isMovingDisplayTransformed() &&
 						bw.getLandmarkPanel().getTableModel().isActive( index ) )
 				{
-					solverThread.requestResolve( false, index, targetPtArray );
+					//solverThread.requestResolve( false, index, targetPtArray );
 				}
 
 				thisViewer.requestRepaint();
