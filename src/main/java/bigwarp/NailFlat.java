@@ -386,6 +386,8 @@ public class NailFlat implements Callable<Void> {
 
 			N5Utils.save(max, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
 			n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "avg", maxMean);
+
+			n5w.setAttribute(flattenDataset, "sourceHeightmap", heightmapDataset);
 		}
 
 		final RandomAccessibleInterval<UnsignedByteType> costMipmap =
