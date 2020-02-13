@@ -2273,6 +2273,12 @@ public class BigWarp< T >
 	}
 
     public void saveFlatten() throws IOException {
+
+		if( flattenDataset == null ) {
+			System.out.println("Flatten dataset has not been set.");
+			return;
+		}
+
         N5FSWriter n5 = new N5FSWriter(n5Path);
         N5Utils.save( minHeightmap, n5, flattenDataset + minFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
         N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );

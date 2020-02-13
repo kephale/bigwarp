@@ -281,8 +281,8 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"-s", "--cost"}, required = true, description = "Cost dataset -d '/cost/Sec22___20200110_133809'")
 	private String costDataset = "/volumes/cost";
 
-	@Option(names = {"-f", "--flatten"}, required = true, description = "Flatten subcontainer -f '/flatten/Sec22___20200110_133809'")
-	private String flattenDataset = "/flatten";
+	@Option(names = {"-f", "--flatten"}, required = false, description = "Flatten subcontainer -f '/flatten/Sec22___20200110_133809'")
+	private String flattenDataset = null;
 
 	@Option(names = {"-u", "--resume"}, required = false, description = "Resume a flattening session by loading min/max from the flatten dataset")
 	private boolean resume = false;
@@ -337,14 +337,9 @@ public class NailFlat implements Callable<Void> {
 
 		String minDataset, maxDataset;
 
-		if( resume ) {
-			minDataset = flattenDataset + BigWarp.minFaceDatasetName;
-			maxDataset = flattenDataset + BigWarp.maxFaceDatasetName;
-			// TODO add support for loading nails
-		} else {
-			minDataset = heightmapDataset + "/min";
-			maxDataset = heightmapDataset + "/max";
-		}
+
+		minDataset = heightmapDataset + "/min";
+		maxDataset = heightmapDataset + "/max";
 
 		ExecutorService exec = Executors.newFixedThreadPool(8);
 
@@ -384,12 +379,14 @@ public class NailFlat implements Callable<Void> {
 		System.out.println("Max heightmap: " + max.dimension(0) + " " + max.dimension(1) + " " + max.dimension(2));
 
 		// Setup the flatten dataset
-		N5FSWriter n5w = new N5FSWriter(n5Path);
-		N5Utils.save(min, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
-		n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "avg", minMean);
+		if( flattenDataset != null ) {
+			N5FSWriter n5w = new N5FSWriter(n5Path);
+			N5Utils.save(min, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
+			n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "avg", minMean);
 
-		N5Utils.save(max, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
-		n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "avg", maxMean);
+			N5Utils.save(max, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
+			n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "avg", maxMean);
+		}
 
 		final RandomAccessibleInterval<UnsignedByteType> costMipmap =
 				N5Utils.openVolatile(
