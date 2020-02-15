@@ -2284,8 +2284,8 @@ public class BigWarp< T >
         N5Utils.save( minHeightmap, n5, flattenDataset + minFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
         N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
 
-        n5.setAttribute(flattenDataset + minFaceDatasetName, "downsamplingFactors", heightmapScales);
-        n5.setAttribute(flattenDataset + maxFaceDatasetName, "downsamplingFactors", heightmapScales);
+        n5.setAttribute(flattenDataset, "downsamplingFactors", heightmapScales);
+        //n5.setAttribute(flattenDataset + maxFaceDatasetName, "downsamplingFactors", heightmapScales);
 
         // At this point the min and max heightmaps are updated to account for the nails
 //        DoubleType minMean = SemaUtils.getAvgValue(minHeightmap);
