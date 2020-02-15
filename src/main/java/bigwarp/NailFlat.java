@@ -157,11 +157,12 @@ public class NailFlat implements Callable<Void> {
             "--heightmaps", "/heightfields/Sec13_20200208_102626/s1"
     };
 
-    static String[] argsSec14 = new String[]{
+	static String[] argsSec14 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec14___20200106_085015",
+            "-f", "/heightfields/Sec14_20200208_102754_s1_sp0_kh3",
             "-s", "/cost/Sec14_20200208_102754",
-            "--heightmaps", "/heightfields/Sec14_20200208_102754/s1"
+            "--heightmaps", "/heightfields/Sec14_20200208_102754_s1_sp0"
     };
 
     static String[] argsSec15 = new String[]{
@@ -281,7 +282,7 @@ public class NailFlat implements Callable<Void> {
 
 	public static final void main(String... args) {
 
-		if( args.length == 0 ) args = argsSec06;
+		if( args.length == 0 ) args = argsSec14;
 
 
 //			args = new String[]{
@@ -582,6 +583,7 @@ public class NailFlat implements Callable<Void> {
 //		BdvFunctions.show(costInterp, "interp");
 
 		bw.setCost(costInterp);
+		bw.setHeightmapScales(heightmapScales);
 
 		bw.setCostStepData((int) costStep);
 		bw.setHeightmapScale(heightmapScale);

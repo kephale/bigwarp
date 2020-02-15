@@ -372,6 +372,7 @@ public class BigWarp< T >
 	private double minMean;
 	private double maxMean;
 	private double heightmapScale = 1;
+	private double[] heightmapScales;
 
 	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2283,6 +2284,9 @@ public class BigWarp< T >
         N5Utils.save( minHeightmap, n5, flattenDataset + minFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
         N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
 
+        n5.setAttribute(flattenDataset + minFaceDatasetName, "downsamplingFactors", heightmapScales);
+        n5.setAttribute(flattenDataset + maxFaceDatasetName, "downsamplingFactors", heightmapScales);
+
         // At this point the min and max heightmaps are updated to account for the nails
 //        DoubleType minMean = SemaUtils.getAvgValue(minHeightmap);
 //        DoubleType maxMean = SemaUtils.getAvgValue(maxHeightmap);
@@ -2380,6 +2384,14 @@ public class BigWarp< T >
 
 	public void setHeightmapScale(double heightmapScale) {
 		this.heightmapScale = heightmapScale;
+	}
+
+	public void setHeightmapScales(double[] heightmapScales) {
+		this.heightmapScales = heightmapScales;
+	}
+
+	public double[] getHeightmapScales() {
+		return heightmapScales;
 	}
 
 	public enum WarpVisType
