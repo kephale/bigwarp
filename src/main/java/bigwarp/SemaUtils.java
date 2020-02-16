@@ -13,6 +13,7 @@ import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
+import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.util.RealSum;
 import net.imglib2.view.IntervalView;
 import net.imglib2.view.Views;
@@ -66,8 +67,8 @@ public class SemaUtils {
         return Converters.convert((RandomAccessibleInterval<RealType>) rotView, (a, b) -> b.setReal(a.getRealDouble()), new DoubleType());
     }
 
-    public static DoubleType getAvgValue(RandomAccessibleInterval<DoubleType> rai) {
-        RandomAccess<DoubleType> ra = rai.randomAccess();
+    public static DoubleType getAvgValue(RandomAccessibleInterval<FloatType> rai) {
+        RandomAccess<FloatType> ra = rai.randomAccess();
         long[] pos = new long[rai.numDimensions()];
         for( int k = 0; k < pos.length; k++ ) pos[k] = 0;
         ra.localize(pos);

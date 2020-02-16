@@ -373,8 +373,9 @@ public class BigWarp< T >
 	private double maxMean;
 	private double heightmapScale = 1;
 	private double[] heightmapScales;
+    private String sourceHeightmapDataset;
 
-	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
+    public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
 		this( data, windowTitle, BigWarpViewerOptions.options( ( detectNumDims( data.sources ) == 2 ) ), progressWriter );
 	}
@@ -2284,12 +2285,13 @@ public class BigWarp< T >
         N5Utils.save( minHeightmap, n5, flattenDataset + minFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
         N5Utils.save( maxHeightmap, n5, flattenDataset + maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression() );
 
+        n5.setAttribute(flattenDataset, "sourceHeightmap", sourceHeightmapDataset);
         n5.setAttribute(flattenDataset, "downsamplingFactors", heightmapScales);
         //n5.setAttribute(flattenDataset + maxFaceDatasetName, "downsamplingFactors", heightmapScales);
 
         // At this point the min and max heightmaps are updated to account for the nails
-//        DoubleType minMean = SemaUtils.getAvgValue(minHeightmap);
-//        DoubleType maxMean = SemaUtils.getAvgValue(maxHeightmap);
+        //DoubleType minMean = SemaUtils.getAvgValue(minHeightmap);
+        //DoubleType maxMean = SemaUtils.getAvgValue(maxHeightmap);
 
         n5.setAttribute(flattenDataset + minFaceDatasetName, "avg", minMean);
         n5.setAttribute(flattenDataset + maxFaceDatasetName, "avg", maxMean);
@@ -2394,7 +2396,11 @@ public class BigWarp< T >
 		return heightmapScales;
 	}
 
-	public enum WarpVisType
+    public void setSourceHeightmapDataset(String heightmapDataset) {
+	    this.sourceHeightmapDataset = heightmapDataset;
+    }
+
+    public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
 	};
@@ -3666,13 +3672,13 @@ public class BigWarp< T >
 							net.imglib2.Cursor<FloatType> hmCursor = Views.flatIterable(Views.interval(heightmap, heightmapPatch)).cursor();
 							net.imglib2.Cursor<DoubleType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
 
-							RealSum prevPatchSum = new RealSum();
+							//RealSum prevPatchSum = new RealSum();
 
 							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
 								hmCursor.fwd();
 
-								prevPatchSum.add(hmCursor.get().get());
+								//prevPatchSum.add(hmCursor.get().get());
 
 								hmCursor.get().set((float) (patchCursor.get().get() + offset - 1 + additionalHeigthmapOffset));
 							}
@@ -3687,7 +3693,7 @@ public class BigWarp< T >
                             RandomAccessibleInterval<DoubleType> smoothPatch = bw.imagej.op().create().img((Interval) heightmapPatch);
 							SeparableSymmetricConvolution.convolve(Gauss3.halfkernels(hmSigmas), Views.extendBorder( heightmap ), smoothPatch, exec);
 
-							RealSum newPatchSum = new RealSum();
+							//RealSum newPatchSum = new RealSum();
 
 							// Copy the gaussian result back into the heightmap
 							hmCursor = Views.flatIterable(Views.interval(heightmap, smoothPatch)).cursor();
@@ -3700,17 +3706,18 @@ public class BigWarp< T >
 
 								hmCursor.get().set((float)v);
 
-								newPatchSum.add(v);
+								//newPatchSum.add(v);
 							}
 
 							ImageJFunctions.wrap(Views.interval(heightmap, smoothPatch),"patched smoothed HM").show();
 
-							long patchSize = heightmapPatch.dimension(0) * heightmapPatch.dimension(1);
-							if( heightmap == bw.minHeightmap ) {
-								bw.minMean = bw.minMean - prevPatchSum.getSum() / patchSize + newPatchSum.getSum() / patchSize;
-							} else {
-								bw.maxMean = bw.maxMean - prevPatchSum.getSum() / patchSize + newPatchSum.getSum() / patchSize;
-							}
+							// Disable updating avg
+//							long patchSize = heightmapPatch.dimension(0) * heightmapPatch.dimension(1);
+//							if( heightmap == bw.minHeightmap ) {
+//								bw.minMean = bw.minMean - prevPatchSum.getSum() / patchSize + newPatchSum.getSum() / patchSize;
+//							} else {
+//								bw.maxMean = bw.maxMean - prevPatchSum.getSum() / patchSize + newPatchSum.getSum() / patchSize;
+//							}
 
 							System.out.println("Heightmap has been patched");
 						}
