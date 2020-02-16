@@ -80,8 +80,9 @@ public class NailFlat implements Callable<Void> {
     static String[] argsSec03 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec03___20200110_121405",
-            "-s", "/cost/Sec03_20200206_162201",
-            "--heightmaps", "/heightfields/Sec03_20200206_162201/s1"
+            "-s", "/cost/Sec03_20200215_1557",
+			"-f", "/heightfields/Sec03_20200215_1557_s1_sp3_khcheck2",
+            "--heightmaps", "/heightfields/Sec03_20200215_1557_s1_sp3"
     };
 
     static String[] argsSec04 = new String[]{
@@ -116,9 +117,9 @@ public class NailFlat implements Callable<Void> {
     static String[] argsSec08 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec08___20200211_170942",
-            "-f", "/heightfields/Sec03_20200206_162201_revision01",
-            "-s", "/cost/Sec08_20200212_85155",
-            "--heightmaps", "/heightfields/Sec08_20200212_85155/s1"
+            "-f", "/heightfields/Sec08_20200215_1557_kh0",
+            "-s", "/cost/Sec08_20200215_1557",
+            "--heightmaps", "/heightfields/Sec08_20200215_1557/s1"
     };
 
 //    static String[] argsSec09 = new String[]{
@@ -157,13 +158,25 @@ public class NailFlat implements Callable<Void> {
             "--heightmaps", "/heightfields/Sec13_20200208_102626/s1"
     };
 
-	static String[] argsSec14 = new String[]{
+	static String[] argsSec14scale1 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec14___20200106_085015",
-            "-f", "/heightfields/Sec14_20200208_102754_s1_sp0_kh3",
+            "-f", "/heightfields/Sec14_20200208_102754_s1_khtest",
             "-s", "/cost/Sec14_20200208_102754",
-            "--heightmaps", "/heightfields/Sec14_20200208_102754_s1_sp0"
+            "--costMipmapToUse", "1",
+            "--heightmaps", "/heightfields/Sec14_20200208_102754/s1"
     };
+
+    static String[] argsSec14scale3 = new String[]{
+            "-i", "/nrs/flyem/tmp/VNC.n5",
+            "-d", "/zcorr/Sec14___20200106_085015",
+            "-f", "/heightfields/Sec14_20200208_102754_s3_kh0",
+            "-s", "/cost/Sec14_20200208_102754",
+            "--costMipmapToUse", "3",
+            "--heightmaps", "/heightfields/Sec14_20200208_102754/s3"
+    };
+
+    static String[] argsSec14 = argsSec14scale1;
 
     static String[] argsSec15 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
@@ -249,8 +262,6 @@ public class NailFlat implements Callable<Void> {
             "--heightmaps", "/heightfields/Sec26_20200207_102442/s1"
     };
 
-	static int costMipmapToUse = 1;
-
 	@Option(names = {"-i", "--container"}, required = true, description = "container path, e.g. -i /nrs/flyem/tmp/VNC.n5")
 	private String n5Path = "/nrs/flyem/alignment/kyle/nail_test.n5";
 
@@ -266,8 +277,11 @@ public class NailFlat implements Callable<Void> {
 	@Option(names = {"-u", "--resume"}, required = false, description = "Resume a flattening session by loading min/max from the flatten dataset")
 	private boolean resume = false;
 
-	@Option(names = {"--heightmaps"}, required = true, description = "Dataset for the min heightmap -f '/flatten/Sec22___20200110_133809/heightmaps' or full path to HDF5")
+	@Option(names = {"--heightmaps"}, required = true, description = "Dataset for the min heightmap -f '/flatten/Sec22___20200110_133809/heightmaps'")
 	private String heightmapDataset = null;
+
+	@Option(names = {"--costMipmapToUse"}, required = false, description = "Scale factor of the cost dataset to use. this MUST match the heightmap's downscale --costMipmapToUse 3")
+	private int costMipmapToUse = 1;
 
 //	@Option(names = {"--min"}, required = false, description = "Dataset for the min heightmap -f '/flatten/Sec22___20200110_133809/heightmaps/min' or full path to HDF5")
 //	private String minDataset = null;
@@ -358,16 +372,16 @@ public class NailFlat implements Callable<Void> {
 		System.out.println("Max heightmap: " + max.dimension(0) + " " + max.dimension(1) + " " + max.dimension(2));
 
 		// Setup the flatten dataset
-		if( flattenDataset != null ) {
-			N5FSWriter n5w = new N5FSWriter(n5Path);
-			N5Utils.save(min, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
-			n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "avg", minMean);
-
-			N5Utils.save(max, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
-			n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "avg", maxMean);
-
-			n5w.setAttribute(flattenDataset, "sourceHeightmap", heightmapDataset);
-		}
+//		if( flattenDataset != null ) {
+//			N5FSWriter n5w = new N5FSWriter(n5Path);
+//			N5Utils.save(min, n5w, flattenDataset + BigWarp.minFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
+//			n5w.setAttribute(flattenDataset + BigWarp.minFaceDatasetName, "avg", minMean);
+//
+//			N5Utils.save(max, n5w, flattenDataset + BigWarp.maxFaceDatasetName, new int[]{1024, 1024}, new RawCompression());
+//			n5w.setAttribute(flattenDataset + BigWarp.maxFaceDatasetName, "avg", maxMean);
+//
+//			n5w.setAttribute(flattenDataset, "sourceHeightmap", heightmapDataset);
+//		}
 
 		final RandomAccessibleInterval<UnsignedByteType> costMipmap =
 				N5Utils.openVolatile(
@@ -460,17 +474,17 @@ public class NailFlat implements Callable<Void> {
 
 		/* range/heightmap visualization */
 		final IntervalView<DoubleType> zRange = Views.interval(
-				zRange(( minMean + 0.5 ) * heightmapScale - 0.5,
-						( maxMean + 0.5 ) * heightmapScale - 0.5,
+				zRange(( minMean + 0.5 ) - 0.5,
+						( maxMean + 0.5 ) - 0.5,
 						255,
 						1),
-				new long[]{0, 0, Math.round(( minMean + 0.5 ) * heightmapScale - 0.5) - padding},
-				new long[]{rawMipmaps[0].dimension(0), rawMipmaps[0].dimension(2), Math.round(( maxMean + 0.5 ) * heightmapScale - 0.5) + padding});
+				new long[]{0, 0, Math.round(( minMean + 0.5 ) - 0.5) - padding},
+				new long[]{rawMipmaps[0].dimension(0), rawMipmaps[0].dimension(2), Math.round(( maxMean + 0.5 ) - 0.5) + padding});
 
 		final Interval zCropInterval = zRange;
 
 		System.out.println("range/heightmap: " + zRange);
-		System.out.println("min: " + (( minMean + 0.5 ) * heightmapScale - 0.5) + " max: " + (( maxMean + 0.5 ) * heightmapScale - 0.5));
+		System.out.println("min: " + (( minMean + 0.5 ) - 0.5) + " max: " + (( maxMean + 0.5 ) - 0.5));
 
 		// TODO: Height maps contain NaN's and sometimes strong negative numbers
 		//ImageJFunctions.show(min);
@@ -560,6 +574,7 @@ public class NailFlat implements Callable<Void> {
 		bw.setFlattenSubContainer(flattenDataset);
 		bw.setMinMean(minMean);
 		bw.setMaxMean(maxMean);
+		bw.setSourceHeightmapDataset(heightmapDataset);
 
 		//bw.setCost(cost);
 
