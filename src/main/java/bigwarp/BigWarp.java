@@ -3593,18 +3593,29 @@ public class BigWarp< T >
 								nrCursor.get().set(sourceCursor.get());
 							}
 
-							// This logic is risky FIXME
 							RandomAccessibleInterval<FloatType> heightmap;
-							long offset;
-							if (regionMin[2] > (float) (dimensions[2]) / 2.0 && regionMax[2] > (float) (dimensions[2]) / 2.0) {
+							long offset = costRegion.min(2);
+
+							// Test which heightmap is closest at the middle of the nailing region
+							long testX = (long) ((regionMax[0] + regionMin[0]) * 0.5);
+							long testY = (long) ((regionMax[1] + regionMin[1]) * 0.5);
+
+							long[] testPos = new long[]{testX, testY};
+							hmMinAccess.setPosition(testPos);
+							float testHmMin = hmMinAccess.get().get();
+							float distToMin = Math.abs(testHmMin - regionMin[2]);
+
+							hmMaxAccess.setPosition(testPos);
+							float testHmMax = hmMaxAccess.get().get();
+							float distToMax = Math.abs(testHmMax - regionMax[2]);
+
+							if ( distToMin > distToMax ) {
 								// Max heightmap
 								heightmap = bw.maxHeightmap;
-                                offset = costRegion.min(2);
 								System.out.println("Updating max heightmap");
 							} else {
 								// Min heightmap
 								heightmap = bw.minHeightmap;
-                                offset = costRegion.min(2);
 								System.out.println("Updating min heightmap");
 							}
 
