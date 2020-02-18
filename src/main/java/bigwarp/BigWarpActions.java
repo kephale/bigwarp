@@ -1371,10 +1371,10 @@ public class BigWarpActions
 				Double[] nail = nails.get(n);
 				for( int ztrain = -magicZTraining; ztrain <= magicZTraining; ztrain++ ) {
 					//double[] features = new double[numFeatures];
+					double[] trainNail = new double[]{nail[0], nail[1], nail[2] + ztrain};
+					double[] features = getFeatureVector(trainNail, numMipmaps, receptiveFieldSize, mipmapAccess);
 
-					double[] features = getFeatureVector(nail, numMipmaps, receptiveFieldSize, mipmapAccess);
-
-					inputFeatures[n * nailStride + ztrain] = features;
+					inputFeatures[n * nailStride + ztrain + magicZTraining] = features;
 					outputTarget[n * nailStride + ztrain] = ztrain / magicZTraining;
 				}
 			}
@@ -1460,11 +1460,11 @@ public class BigWarpActions
 
 		}
 
-		static private double[] getFeatureVector(Double[] nail, int numMipmaps, int receptiveFieldSize, RandomAccess<UnsignedByteType>[] mipmapAccess) {
+		static private double[] getFeatureVector(double[] nail, int numMipmaps, int receptiveFieldSize, RandomAccess<UnsignedByteType>[] mipmapAccess) {
 			int numFeatures = numMipmaps * ( receptiveFieldSize * 2 + 1 );
 			double[] features = new double[numFeatures];
 
-			long[] pos = new long[]{nail[0].longValue(), nail[1].longValue(), nail[2].longValue()};
+			long[] pos = new long[]{(long) nail[0], (long) nail[1], (long) nail[2]};
 
 			for(int dz = -receptiveFieldSize; dz <= receptiveFieldSize; dz++ ){
 				for( int mipmap = 0; mipmap < numMipmaps; mipmap++ ) {
@@ -1478,7 +1478,7 @@ public class BigWarpActions
 
 		static private double[] getFeatureVector(Localizable nail, int numMipmaps, int receptiveFieldSize, RandomAccess<UnsignedByteType>[] mipmapAccess) {
 			return getFeatureVector(
-					new Double[]{nail.getDoublePosition(0), nail.getDoublePosition(1), nail.getDoublePosition(2)},
+					new double[]{nail.getDoublePosition(0), nail.getDoublePosition(1), nail.getDoublePosition(2)},
 					numMipmaps,
 					receptiveFieldSize,
 					mipmapAccess);
