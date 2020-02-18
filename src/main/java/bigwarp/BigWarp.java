@@ -335,6 +335,7 @@ public class BigWarp< T >
 	double transformScaleY = transformScaleX;
 
 	private static double nailPenalty = 10000;//Double.MAX_VALUE;
+	private static double nailReward = 0;
     //private static double nailPenalty = 1000;
 
 
@@ -374,8 +375,9 @@ public class BigWarp< T >
 	private double heightmapScale = 1;
 	private double[] heightmapScales;
     private String sourceHeightmapDataset;
+	private RandomAccessible<DoubleType> temporaryCost = null;
 
-    public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
+	public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
 		this( data, windowTitle, BigWarpViewerOptions.options( ( detectNumDims( data.sources ) == 2 ) ), progressWriter );
 	}
@@ -2444,7 +2446,15 @@ public class BigWarp< T >
 	    this.sourceHeightmapDataset = heightmapDataset;
     }
 
-    public enum WarpVisType
+	public void setTemporaryCost(RandomAccessible<DoubleType> temporaryCost) {
+		this.temporaryCost = temporaryCost;
+	}
+
+	public RandomAccessible<DoubleType> getTemporaryCost() {
+		return temporaryCost;
+	}
+
+	public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
 	};
@@ -3550,8 +3560,12 @@ public class BigWarp< T >
 						final Scale2D transformScale = new Scale2D(bw.getCostStep(), bw.getCostStep());
 
 						// NOTE: costImg is expected to already be subsampled
-						RandomAccessibleInterval<DoubleType> costImg =
-									Views.permute(bw.getCostImg(), 1, 2);
+						RandomAccessibleInterval<DoubleType> costImg;
+						if( bw.getTemporaryCost() == null ) {
+							costImg = Views.permute(bw.getCostImg(), 1, 2);
+						} else {
+							costImg = Views.interval(bw.getTemporaryCost(), bw.getCostImg());
+						}
 
 						long[] dimensions = new long[3];
 						costImg.dimensions(dimensions);
@@ -3628,13 +3642,13 @@ public class BigWarp< T >
 //							 grab a larger cost region
 							IntervalView<DoubleType> costRegionPad = Views.interval(Views.extendMirrorSingle(costImg), regionMinPad, regionMaxPad);
 
-							// smooth larger region
-							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
+							// smooth larger region // FIXME reenable
+//							RandomAccessibleInterval<DoubleType> smoothedCostRegion = bw.imagej.op().filter().gauss(costRegionPad, smoothingSigmas);
+//
+//							// crop interior
+//							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
 
-							// crop interior
-							RandomAccessibleInterval<DoubleType> costRegion = Views.interval(smoothedCostRegion, regionMin, regionMax);
-
-                            //RandomAccessibleInterval<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
+                            RandomAccessibleInterval<DoubleType> costRegion = Views.interval(costImg, regionMin, regionMax);
 
 							// Create a new RAI and copy the cost region
 							RandomAccessibleInterval<DoubleType> nailRegion = bw.imagej.op().create().img((Interval) costRegion);
@@ -3768,6 +3782,12 @@ public class BigWarp< T >
 //							}
 
 							System.out.println("Heightmap has been patched");
+
+
+							if( bw.getTemporaryCost() != null ) {
+								bw.setTemporaryCost(null);
+							}
+
 						}
 
 						// Now export the results to our flatten dataset in the n5
@@ -3941,7 +3961,7 @@ public class BigWarp< T >
                 hmAccess.setPosition(crPos);
                 double hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal)-additionalOffset ) {
-                    crAccess.get().set(0);
+                    crAccess.get().set(nailReward);
                 } else {
                     crAccess.get().set(nailPenalty);
                 }
@@ -3953,7 +3973,7 @@ public class BigWarp< T >
                 hmAccess.setPosition(crPos);
                 hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal)-additionalOffset ) {
-                    crAccess.get().set(0);
+                    crAccess.get().set(nailReward);
                 } else {
                     crAccess.get().set(nailPenalty);
                 }
@@ -3972,7 +3992,7 @@ public class BigWarp< T >
                 hmAccess.setPosition(crPos);
                 double hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal)-additionalOffset ) {// FIXME: check if this rounding is proper
-                    crAccess.get().set(0);
+                    crAccess.get().set(nailReward);
                 } else {
                     crAccess.get().set(nailPenalty);
                 }
@@ -3984,13 +4004,30 @@ public class BigWarp< T >
                 hmAccess.setPosition(crPos);
                 hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal)-additionalOffset ) {// FIXME: check if this rounding is proper
-                    crAccess.get().set(0);
+                    crAccess.get().set(nailReward);
                 } else {
                     crAccess.get().set(nailPenalty);
                 }
             }
         }
 
+	}
+
+
+	public static double getNailPenalty() {
+		return nailPenalty;
+	}
+
+	public static void setNailPenalty(double nailPenalty) {
+		BigWarp.nailPenalty = nailPenalty;
+	}
+
+	public static double getNailReward() {
+		return nailReward;
+	}
+
+	public static void setNailReward(double nailReward) {
+		BigWarp.nailReward = nailReward;
 	}
 
 	public RandomAccessibleInterval<DoubleType> getCostImg() {
@@ -4110,7 +4147,7 @@ public class BigWarp< T >
             pos[2] = z;
             ra.setPosition(pos);
             if( z == gridNail[2] - additionalOffset ) {
-            	ra.get().setReal(0);
+            	ra.get().setReal(nailReward);
             } else {
             	ra.get().setReal(nailPenalty);
             }

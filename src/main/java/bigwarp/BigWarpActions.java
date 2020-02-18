@@ -14,15 +14,17 @@ import javax.swing.KeyStroke;
 import javax.swing.table.TableCellEditor;
 
 import ij.gui.GenericDialog;
-import net.imglib2.Localizable;
-import net.imglib2.RandomAccess;
-import net.imglib2.RandomAccessibleInterval;
+import net.imglib2.*;
+import net.imglib2.img.display.imagej.ImageJFunctions;
+import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
 import net.imglib2.position.FunctionRandomAccessible;
+import net.imglib2.realtransform.*;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.view.Views;
 import org.apache.commons.math3.linear.*;
+import org.janelia.saalfeldlab.hotknife.util.Transform;
 import org.scijava.ui.behaviour.KeyStrokeAdder;
 import org.scijava.ui.behaviour.util.AbstractNamedAction;
 import org.scijava.ui.behaviour.util.InputActionBindings;
@@ -1268,9 +1270,9 @@ public class BigWarpActions
 	}
 
 	public static int magicXYPadding = 1;
-	public static int magicZTraining = 25;
+	public static int magicZTraining = 50;
 	public static long maxSteps = 100;
-	public static boolean magicIgnoreNails = false;
+	public static boolean magicFlatten = true;
 
 	public static class GenerateMagicNailsAction extends AbstractNamedAction
 	{
@@ -1296,14 +1298,14 @@ public class BigWarpActions
 			gd.addNumericField("Z training radius:", magicZTraining, 0);
 			gd.addNumericField("Max steps:", maxSteps, 0);
 			gd.addMessage("");
-			gd.addCheckbox("Ignore nails for graph cut (WARNING!)", magicIgnoreNails );
+			gd.addCheckbox("Flatten with new cost? Otherwise generate nails", magicFlatten);
 			gd.showDialog();
 
 			if (gd.wasCanceled()) return;
 			magicXYPadding = (int) gd.getNextNumber();
 			magicZTraining = (int) gd.getNextNumber();
 			maxSteps = (int) gd.getNextNumber();
-			magicIgnoreNails = gd.getNextBoolean();
+			magicFlatten = gd.getNextBoolean();
 
 			// Find operating region
 			RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = bw.getRawMipmaps();
@@ -1353,9 +1355,11 @@ public class BigWarpActions
 			System.out.println("Region min: " + regionMin[0] + " " + regionMin[1] + " " + regionMin[2]);
 			System.out.println("Region max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
+			Interval regionInterval = new FinalInterval(regionMin, regionMax);
+
 			// Generate a quick training set
 			int numMipmaps = 3;
-			int receptiveFieldSize = 50;
+			int receptiveFieldSize = 25;
 
 			int numFeatures = numMipmaps * ( receptiveFieldSize * 2 + 1 );
 			int nailStride = (magicZTraining * 2 + 1);
@@ -1369,7 +1373,40 @@ public class BigWarpActions
 				System.out.println("mipmap: " + mipmap + " " + rawMipmaps[mipmap].dimension(0) + " " + rawMipmaps[mipmap].dimension(1) + " " + rawMipmaps[mipmap].dimension(2));
 				//mipmapAccess[mipmap] = Views.extendBorder(rawMipmaps[mipmap+1]).randomAccess();// FIXME skip s0 keep sretruning 0
 				//mipmapAccess[mipmap] = Views.permute(rawMipmaps[mipmap+1], 1, 2).randomAccess();// FIXME skip s0 keep sretruning 0
-				mipmapAccess[mipmap] = Views.extendBorder(Views.permute(rawMipmaps[mipmap+1], 1, 2)).randomAccess();// FIXME skip s0 keep sretruning 0
+				//mipmapAccess[mipmap] = Views.extendBorder(Views.permute(rawMipmaps[mipmap], 1, 2)).randomAccess();// FIXME skip s0 keep sretruning 0
+				double[] scale = bw.getScales()[mipmap];
+				System.out.println("Scale " + Arrays.toString(scale));
+
+				final RealTransformSequence transformSequenceFlat = new RealTransformSequence();
+				final Scale3D scale3D = new Scale3D(1/ scale[0], 1/scale[1], 1/scale[2]);
+				final Translation3D shift = new Translation3D(0.5 * (scale[0] - 1), 0.5 * (scale[1] - 1), 0.5 * (scale[2] - 1));
+				transformSequenceFlat.add(shift);
+				transformSequenceFlat.add(shift.inverse());
+				transformSequenceFlat.add(scale3D);
+
+				RandomAccessibleInterval<UnsignedByteType> interp = Views.interval(
+						new RealTransformRandomAccessible<>(
+								Views.interpolate(
+										Views.extendValue(rawMipmaps[mipmap], new UnsignedByteType(0)),
+										new NearestNeighborInterpolatorFactory<>()),
+								transformSequenceFlat),
+						rawMipmaps[0]);
+
+				RandomAccessibleInterval<UnsignedByteType> mmrai = Views.permute(interp, 1, 2);
+
+				// This will use nl interp
+//				RandomAccessibleInterval<UnsignedByteType> mmrai = Views.permute(
+//						Transform.createTransformedInterval(
+//								rawMipmaps[mipmap],
+//								rawMipmaps[0],
+//								transformSequenceFlat,
+//								new UnsignedByteType(0)),
+//						1, 2);
+
+//				ImageJFunctions.show(Views.interval(mmrai, regionInterval), "Mipmap " + mipmap);
+
+				mipmapAccess[mipmap] =
+					Views.extendBorder(mmrai).randomAccess();// FIXME skip s0 keep sretruning 0
 			}
 
 			System.out.println("Generating training data");
@@ -1382,8 +1419,7 @@ public class BigWarpActions
 
 					double[] features = getFeatureVector(trainNail, numMipmaps, receptiveFieldSize, mipmapAccess, bw.getScales());
 
-					if( n == 0 )
-						System.out.println("Pos: " + Arrays.toString(trainNail) + " Target: " + (float)ztrain / (float)magicZTraining + " Training set: " + Arrays.toString(features));
+					if( n == 0 ) System.out.println("Pos: " + Arrays.toString(trainNail) + " Target: " + (float)ztrain / (float)magicZTraining + " Training set: " + Arrays.toString(features));
 					inputFeatures[n * nailStride + ztrain + magicZTraining] = features;
 					outputTarget[n * nailStride + ztrain + magicZTraining] = (float)ztrain / (float)magicZTraining;
 				}
@@ -1399,33 +1435,64 @@ public class BigWarpActions
 			RealVector solution = solver.solve(target);
 
 			// Make a FunctionRandomAccessibleInterval with the SVD solution
-			FunctionRandomAccessible<DoubleType> solutionRA = directionToSurface(numMipmaps, receptiveFieldSize, mipmapAccess, bw.getScales(), solution);
+			FunctionRandomAccessible<DoubleType> solutionRA = directionToSurface(numMipmaps, receptiveFieldSize, mipmapAccess, bw.getScales(), solution, magicFlatten);
 			FunctionRandomAccessible<DoubleType>.FunctionRandomAccess solutionAccess = solutionRA.randomAccess();
 
-			// Place nails at all currently uncovered positions by using the SVD weights to adjust z-position of nails
-			long[] pos = new long[3];
+			if( !magicFlatten ) {
+				// Place nails at all currently uncovered positions by using the SVD weights to adjust z-position of nails
+				long[] pos = new long[3];
 
-			System.out.println("Placing nail grid");
-			for(double x = regionMin[0]; x <= regionMax[0]; x += bw.getCostStep() ) {
-				pos[0] = (long) x;
-				System.out.println("X: " + x);
-				for(double y = regionMin[1]; y <= regionMax[1]; y += bw.getCostStep()) {
-					pos[1] = (long) y;
+				System.out.println("Placing nail grid");
+				for (double x = regionMin[0]; x <= regionMax[0]; x += bw.getCostStep()) {
+					pos[0] = (long) x;
+					System.out.println("X: " + x);
+					for (double y = regionMin[1]; y <= regionMax[1]; y += bw.getCostStep()) {
+						pos[1] = (long) y;
 
-					// TODO: skip existing nails use a list, remove nails from list once checked against
+						// TODO: skip existing nails use a list, remove nails from list once checked against
 
-					hmAccess.setPosition(new long[]{(long) (x/bw.getCostStep()), (long) (y/bw.getCostStep())});
+						hmAccess.setPosition(new long[]{(long) (x / bw.getCostStep()), (long) (y / bw.getCostStep())});
 
-					pos[2] = (long) hmAccess.get().get();
-					pos[2] = relaxHeightmap( pos, solutionAccess, (int) maxSteps);
+						pos[2] = (long) hmAccess.get().get();
+						pos[2] = relaxHeightmap(pos, solutionAccess, (int) maxSteps);
 
-					double[] ptarrayLoc = new double[]{pos[0], pos[1] , pos[2]};
-					double[] ptBackLoc = new double[3];
+						double[] ptarrayLoc = new double[]{pos[0], pos[1], pos[2]};
+						double[] ptBackLoc = new double[3];
 
-					bw.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
-					bw.addPoint(ptBackLoc, true, bw.viewerP);
-					bw.addPoint(ptarrayLoc, false, bw.viewerQ);
+						bw.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
+						bw.addPoint(ptBackLoc, true, bw.viewerP);
+						bw.addPoint(ptarrayLoc, false, bw.viewerQ);
+					}
 				}
+			} else {
+				System.out.println("Solving and applying flatten transform");
+
+				gd = new GenericDialog("Flatten dialog");
+				gd.addNumericField("Max delta (graph cut):", maxDelta, 0);
+				gd.addNumericField("Sigma Cost Function (on subsampled):", sigmaCost, 1);
+				gd.addNumericField("Sigma Heightmap (on subsampled):", sigmaHeightmap, 1);
+				gd.addNumericField("X/Y padding radius:", xyPadding, 0);
+				gd.addNumericField("Z padding radius (negative means autodetect):", zPadding, 0);
+				gd.addMessage("");
+				gd.addCheckbox("Ignore nails for graph cut (WARNING!)", ignoreNailsWhenSolving );
+				gd.addNumericField("Additional heightmap offset (WARNING)", additionalHeightmapOffset, 1);
+				gd.showDialog();
+
+				if (gd.wasCanceled()) return;
+				bw.setSmoothingConstraint(maxDelta = (int) gd.getNextNumber());
+				bw.setSigmaCost( sigmaCost = gd.getNextNumber() );
+				bw.setSigmaHeightmap( sigmaHeightmap = gd.getNextNumber() );
+				bw.setPaddingXY(xyPadding = (int) gd.getNextNumber());
+				bw.setPaddingZ(zPadding = (int) gd.getNextNumber());
+				bw.setIgnoreNailsGraphCut( ignoreNailsWhenSolving = gd.getNextBoolean() );
+				bw.setAdditionalHeightmapOffset( additionalHeightmapOffset = gd.getNextNumber() );
+
+//				bw.setNailReward(0);
+//				bw.setNailPenalty(0);
+
+				bw.setTemporaryCost(solutionRA);
+
+				bw.restimateTransformation(true);
 			}
 
 		}
@@ -1510,18 +1577,22 @@ public class BigWarpActions
 
 			long[] pos = new long[]{(long) nail[0], (long) nail[1], (long) nail[2]};
 
-			//System.out.println("pos: " + pos[0] + " " + pos[1] + " " + pos[2]);
+			//System.out.println("pos: " + pos[0] + " " + pos[1] + " " + pos[2] + " a");
 			for(int dz = -receptiveFieldSize; dz <= receptiveFieldSize; dz++ ){
 				pos[2] = (long) (nail[2] + dz);
 				for( int mipmap = 0; mipmap < numMipmaps; mipmap++ ) {
 					int idx = (dz + receptiveFieldSize) * numMipmaps + mipmap;
 					//long[] mipmapPos = new long[]{Math.round(nail[0] / scales[mipmap][0]), Math.round(nail[1] / scales[mipmap][1]), pos[2]};
+					//long[] mipmapPos = new long[]{Math.round(nail[0] / scales[mipmap][0] * 0.5), Math.round(nail[1] / scales[mipmap][1] * 0.5), Math.round(pos[2] * 0.5)};
 					long[] mipmapPos = new long[]{Math.round(nail[0] * 0.5), Math.round(nail[1] * 0.5), Math.round(pos[2] * 0.5)};// FIXME hard coding to handle screen space
+					//long[] mipmapPos = new long[]{Math.round(nail[0]), Math.round(nail[1]), Math.round(pos[2])};// FIXME hard coding to handle screen space
 					mipmapAccess[mipmap].setPosition(mipmapPos);
 					features[idx] = mipmapAccess[mipmap].get().get();
 					//if( idx < 2 ) System.out.println("idx: " + idx + " val: " + features[idx]);
 				}
 			}
+
+			//System.out.println("\tpos: " + pos[0] + " " + pos[1] + " " + pos[2] + " b");
 			return features;
 		}
 
@@ -1539,11 +1610,11 @@ public class BigWarpActions
 			final int receptiveFieldSize,
 			final RandomAccess<UnsignedByteType>[] mipmapAccess,
 			final double[][] scales,
-			final RealVector solution) {
+			final RealVector solution,
+			final boolean returnAbsoluteValue) {
 
 			double[] solutionArray = solution.toArray();
 			System.out.println("Direction to surface:  " + Arrays.toString(solutionArray));
-
 
 			return new FunctionRandomAccessible<>(
 					3,
@@ -1555,7 +1626,13 @@ public class BigWarpActions
 							val += features[fid] * solutionArray[fid];
 						}
 
-						value.set(val);
+						val *= 255;
+
+						if( returnAbsoluteValue )
+							value.set(Math.abs(val));
+						else
+							value.set(val);
+
 						//System.out.println("Pos: " + location.getDoublePosition(0) + " " + location.getDoublePosition(1) + " " + location.getDoublePosition(2) + " Feature vector: " + Arrays.toString(features) + " Result val: " + val);
 					},
 					DoubleType::new);
