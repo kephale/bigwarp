@@ -3709,7 +3709,7 @@ public class BigWarp< T >
 							//RealSum prevPatchSum = new RealSum();
 
                             // Copy the patch into the smoothign patch
-                            RandomAccessibleInterval<FloatType> smoothPatch = bw.imagej.op().copy().rai(Views.interval(heightmap, hmIntervalToPatch));
+                            RandomAccessibleInterval<FloatType> smoothPatch = bw.imagej.op().copy().rai(Views.interval(heightmap, hmIntervalForSmoothing));
 
 							net.imglib2.Cursor<FloatType> hmCursor = Views.flatIterable(Views.interval(smoothPatch, heightmapPatch)).cursor();
 							net.imglib2.Cursor<FloatType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
