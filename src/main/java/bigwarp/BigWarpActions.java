@@ -21,6 +21,7 @@ import net.imglib2.position.FunctionRandomAccessible;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
+import net.imglib2.view.Views;
 import org.apache.commons.math3.linear.*;
 import org.scijava.ui.behaviour.KeyStrokeAdder;
 import org.scijava.ui.behaviour.util.AbstractNamedAction;
@@ -1362,7 +1363,7 @@ public class BigWarpActions
 
 			RandomAccess<UnsignedByteType>[] mipmapAccess = new RandomAccess[numMipmaps];
 			for( int mipmap = 0; mipmap < numMipmaps; mipmap++ ){
-				mipmapAccess[mipmap] = rawMipmaps[mipmap].randomAccess();
+				mipmapAccess[mipmap] = Views.extendBorder(rawMipmaps[mipmap]).randomAccess();
 			}
 
 			System.out.println("Generating training data");
