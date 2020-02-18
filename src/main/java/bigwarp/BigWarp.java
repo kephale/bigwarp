@@ -334,7 +334,8 @@ public class BigWarp< T >
 	double transformScaleX = 8;
 	double transformScaleY = transformScaleX;
 
-	private static double nailPenalty = 10000;//Double.MAX_VALUE;
+	private static double nailPenalty = 1000;
+    private static double nailReward = 0;
     //private static double nailPenalty = 1000;
 
 
@@ -374,6 +375,7 @@ public class BigWarp< T >
 	private double heightmapScale = 1;
 	private double[] heightmapScales;
     private String sourceHeightmapDataset;
+    private long heightmapSmoothingBorder;
 
     public BigWarp( final BigWarpData<T> data, final String windowTitle, final ProgressWriter progressWriter ) throws SpimDataException
 	{
@@ -2400,6 +2402,14 @@ public class BigWarp< T >
 	    this.sourceHeightmapDataset = heightmapDataset;
     }
 
+    public long getHeightmapSmoothingBorder() {
+        return heightmapSmoothingBorder;
+    }
+
+    public void setHeightmapSmoothingBorder(long heightmapSmoothingBorder) {
+        this.heightmapSmoothingBorder = heightmapSmoothingBorder;
+    }
+
     public enum WarpVisType
 	{
 		NONE, WARPMAG, JACDET, GRID
@@ -3650,14 +3660,14 @@ public class BigWarp< T >
 
                             //RandomAccessibleInterval<DoubleType> doubleHeightmap = getScaledSurfaceMap(Views.zeroMin(nailRegion), costStep, smoothingConstraint);
 							RandomAccessibleInterval<IntType> intHeightmap = process2(Views.zeroMin(nailRegion), smoothingConstraint, 40, 20);
-							RandomAccessibleInterval<DoubleType> doubleHeightmap = Converters.convert((RandomAccessibleInterval<IntType>) intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new DoubleType());
+							RandomAccessibleInterval<FloatType> doubleHeightmap = Converters.convert((RandomAccessibleInterval<IntType>) intHeightmap, (a, x) -> x.setReal(a.getRealDouble()), new FloatType());
 
-							ImageJFunctions.wrap(doubleHeightmap,"heightmap").show();
+							ImageJFunctions.wrap(doubleHeightmap,"graphcut heightmap").show();
 
 							System.out.println("Graphcut done took: " + (System.nanoTime() - startTime));
 
 							// Convert to double *and* undo the zeroMin offset *and* undo height offset
-							RandomAccessibleInterval<DoubleType> heightmapPatch = Views.translate( doubleHeightmap, costRegion.min(0), costRegion.min(1));
+							RandomAccessibleInterval<FloatType> heightmapPatch = Views.translate( doubleHeightmap, costRegion.min(0), costRegion.min(1));
 
 							System.out.println("Patching heightmap at: ");
 							System.out.println("Min: " + heightmapPatch.min(0) + " " + heightmapPatch.min(1));
@@ -3668,12 +3678,41 @@ public class BigWarp< T >
 //							System.out.println("Previous patch average value: " + SemaUtils.getAvgValue(Views.interval(heightmap, heightmapPatch)));
 //							System.out.println("Replacement patch average value: " + SemaUtils.getAvgValue(heightmapPatch));
 
-							// Copy the patch into the heightmap
-							net.imglib2.Cursor<FloatType> hmCursor = Views.flatIterable(Views.interval(heightmap, heightmapPatch)).cursor();
-							net.imglib2.Cursor<DoubleType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
+
+							// Heightmap smoothing params
+							double[] hmSigmas = new double[]{sigmaHeighmap, sigmaHeighmap};
+							int[] hmhks = Gauss3.halfkernelsizes(hmSigmas);
+							long smoothingBorder = bw.getHeightmapSmoothingBorder();
+
+                            // Smooth using an interval of this size
+                            Interval hmIntervalForSmoothing =
+                                    new FinalInterval(
+                                            new long[]{
+                                                    heightmapPatch.min(0) - smoothingBorder - hmhks[0],
+                                                    heightmapPatch.min(1) - smoothingBorder - hmhks[1]},
+                                            new long[]{
+                                                    heightmapPatch.max(0) + smoothingBorder + hmhks[0],
+                                                    heightmapPatch.max(1) + smoothingBorder + hmhks[1]});
+
+                            // Blend this interval into the heightmap
+                            Interval hmIntervalToPatch =
+                                    new FinalInterval(
+                                            new long[]{
+                                                    heightmapPatch.min(0) - smoothingBorder,
+                                                    heightmapPatch.min(1) - smoothingBorder},
+                                            new long[]{
+                                                    heightmapPatch.max(0) + smoothingBorder,
+                                                    heightmapPatch.max(1) + smoothingBorder});
+
+							ImageJFunctions.wrap(Views.interval(heightmap, hmIntervalToPatch),"old HM patch").show();
 
 							//RealSum prevPatchSum = new RealSum();
 
+                            // Copy the patch into the smoothign patch
+                            RandomAccessibleInterval<FloatType> smoothPatch = bw.imagej.op().copy().rai(Views.interval(heightmap, hmIntervalToPatch));
+
+							net.imglib2.Cursor<FloatType> hmCursor = Views.flatIterable(Views.interval(smoothPatch, heightmapPatch)).cursor();
+							net.imglib2.Cursor<FloatType> patchCursor = Views.flatIterable(heightmapPatch).cursor();
 							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
 								hmCursor.fwd();
@@ -3683,21 +3722,16 @@ public class BigWarp< T >
 								hmCursor.get().set((float) (patchCursor.get().get() + offset - 1 + additionalHeigthmapOffset));
 							}
 
-							ImageJFunctions.wrap(Views.interval(heightmap, heightmapPatch),"patched offset HM").show();
 
-							// Run a gaussian on the patch using the patched heightmap (NEEDS TO BE DEBUGGED)
-							double[] hmSigmas = new double[]{sigmaHeighmap, sigmaHeighmap};
-							//int[] hmhks = Gauss3.halfkernelsizes(hmSigmas);
+							// Run a gaussian on the patch using the patched heightmap
                             ExecutorService exec = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() / 2);
-
-                            RandomAccessibleInterval<DoubleType> smoothPatch = bw.imagej.op().create().img((Interval) heightmapPatch);
-							SeparableSymmetricConvolution.convolve(Gauss3.halfkernels(hmSigmas), Views.extendBorder( heightmap ), smoothPatch, exec);
+							SeparableSymmetricConvolution.convolve(Gauss3.halfkernels(hmSigmas), Views.extendBorder( smoothPatch ), smoothPatch, exec);
 
 							//RealSum newPatchSum = new RealSum();
 
 							// Copy the gaussian result back into the heightmap
-							hmCursor = Views.flatIterable(Views.interval(heightmap, smoothPatch)).cursor();
-							patchCursor = Views.flatIterable(smoothPatch).cursor();
+							hmCursor = Views.flatIterable(Views.interval(heightmap, hmIntervalToPatch)).cursor();
+							patchCursor = Views.flatIterable(Views.interval(smoothPatch, hmIntervalToPatch)).cursor();
 							while (patchCursor.hasNext()) {
 								patchCursor.fwd();
 								hmCursor.fwd();
@@ -3709,7 +3743,7 @@ public class BigWarp< T >
 								//newPatchSum.add(v);
 							}
 
-							ImageJFunctions.wrap(Views.interval(heightmap, smoothPatch),"patched smoothed HM").show();
+							ImageJFunctions.wrap(Views.interval(heightmap, hmIntervalToPatch),"patched smoothed HM").show();
 
 							// Disable updating avg
 //							long patchSize = heightmapPatch.dimension(0) * heightmapPatch.dimension(1);
@@ -3893,7 +3927,7 @@ public class BigWarp< T >
                 hmAccess.setPosition(crPos);
                 double hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal)-additionalOffset ) {
-                    crAccess.get().set(0);
+                    crAccess.get().set(nailReward);
                 } else {
                     crAccess.get().set(nailPenalty);
                 }
@@ -3905,7 +3939,7 @@ public class BigWarp< T >
                 hmAccess.setPosition(crPos);
                 hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal)-additionalOffset ) {
-                    crAccess.get().set(0);
+                    crAccess.get().set(nailReward);
                 } else {
                     crAccess.get().set(nailPenalty);
                 }
@@ -3924,7 +3958,7 @@ public class BigWarp< T >
                 hmAccess.setPosition(crPos);
                 double hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal)-additionalOffset ) {// FIXME: check if this rounding is proper
-                    crAccess.get().set(0);
+                    crAccess.get().set(nailReward);
                 } else {
                     crAccess.get().set(nailPenalty);
                 }
@@ -3936,7 +3970,7 @@ public class BigWarp< T >
                 hmAccess.setPosition(crPos);
                 hmVal = hmAccess.get().getRealDouble();
                 if( z == Math.round(hmVal)-additionalOffset ) {// FIXME: check if this rounding is proper
-                    crAccess.get().set(0);
+                    crAccess.get().set(nailReward);
                 } else {
                     crAccess.get().set(nailPenalty);
                 }
@@ -4062,7 +4096,7 @@ public class BigWarp< T >
             pos[2] = z;
             ra.setPosition(pos);
             if( z == gridNail[2] - additionalOffset ) {
-            	ra.get().setReal(0);
+            	ra.get().setReal(nailReward);
             } else {
             	ra.get().setReal(nailPenalty);
             }
@@ -4070,7 +4104,23 @@ public class BigWarp< T >
         }
     }
 
-    public static class WrappedCoordinateTransform implements InvertibleRealTransform
+	public static double getNailPenalty() {
+		return nailPenalty;
+	}
+
+	public static void setNailPenalty(double nailPenalty) {
+		BigWarp.nailPenalty = nailPenalty;
+	}
+
+	public static double getNailReward() {
+		return nailReward;
+	}
+
+	public static void setNailReward(double nailReward) {
+		BigWarp.nailReward = nailReward;
+	}
+
+	public static class WrappedCoordinateTransform implements InvertibleRealTransform
 	{
 		private final InvertibleCoordinateTransform ct;
 		private final InvertibleCoordinateTransform ct_inv;

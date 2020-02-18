@@ -1128,8 +1128,12 @@ public class BigWarpActions
 	public static double sigmaHeightmap = 2;
 	public static int xyPadding = 500;
 	public static int zPadding = -1;
+	public static int hmSmoothingPadding = 0;
 	public static boolean ignoreNailsWhenSolving = false;
 	public static double additionalHeightmapOffset = 0.0;
+	public static boolean nailCostMax = false;
+	public static int nailAttractorValue = 0;
+	public static int nailRepellerValue = 1000;
 	
 	public static class ApplyFlattenAction extends AbstractNamedAction
 	{
@@ -1150,8 +1154,13 @@ public class BigWarpActions
 			gd.addNumericField("Max delta (graph cut):", maxDelta, 0);
 			gd.addNumericField("Sigma Cost Function (on subsampled):", sigmaCost, 1);
 			gd.addNumericField("Sigma Heightmap (on subsampled):", sigmaHeightmap, 1);
+			gd.addNumericField("Heightmap smoothing padding (on subsampled):", hmSmoothingPadding, 0);
 			gd.addNumericField("X/Y padding radius:", xyPadding, 0);
 			gd.addNumericField("Z padding radius (negative means autodetect):", zPadding, 0);
+			gd.addMessage("");
+			gd.addCheckbox("Use Double MAX & MIN values for nail cost (overrides following vals)", nailCostMax );
+			gd.addNumericField("Nail attractor value (smaller/negative)", nailAttractorValue, 0);
+			gd.addNumericField("Nail repeller value (larger/positive)", nailRepellerValue, 0);
 			gd.addMessage("");
 			gd.addCheckbox("Ignore nails for graph cut (WARNING!)", ignoreNailsWhenSolving );
 			gd.addNumericField("Additional heightmap offset (WARNING)", additionalHeightmapOffset, 1);
@@ -1161,8 +1170,22 @@ public class BigWarpActions
 			bw.setSmoothingConstraint(maxDelta = (int) gd.getNextNumber());
 			bw.setSigmaCost( sigmaCost = gd.getNextNumber() );
 			bw.setSigmaHeightmap( sigmaHeightmap = gd.getNextNumber() );
+			bw.setHeightmapSmoothingBorder( hmSmoothingPadding = (int) gd.getNextNumber() );
 			bw.setPaddingXY(xyPadding = (int) gd.getNextNumber());
 			bw.setPaddingZ(zPadding = (int) gd.getNextNumber());
+
+			nailCostMax = gd.getNextBoolean();
+			nailAttractorValue = (int) gd.getNextNumber();
+			nailRepellerValue = (int) gd.getNextNumber();
+
+			if( nailCostMax ) {
+				bw.setNailPenalty(Double.MAX_VALUE);
+				bw.setNailReward(Double.MIN_VALUE);
+			} else {
+				bw.setNailPenalty(nailRepellerValue);
+				bw.setNailReward(nailAttractorValue);
+			}
+
 			bw.setIgnoreNailsGraphCut( ignoreNailsWhenSolving = gd.getNextBoolean() );
 			bw.setAdditionalHeightmapOffset( additionalHeightmapOffset = gd.getNextNumber() );
 
