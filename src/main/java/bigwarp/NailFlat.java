@@ -625,7 +625,7 @@ public class NailFlat implements Callable<Void> {
 		System.out.println("\nAdditional usage instructions:");
 		System.out.println("f - Apply flatten transform using existing nails");
 		System.out.println("ctrl-n - Generate grid of nails centered around current nail placed along existing heightmap");
-		System.out.println("ctrl-n - Generate grid of magic nails trained on existing nails");
+		System.out.println("m - Generate grid of magic nails trained on existing nails");
 		System.out.println("ctrl-f - Export flatten heightmap and nails\n");
 
 		return null;

@@ -178,7 +178,7 @@ public class BigWarpActions
 		map.put( EXPORT_FLATTEN, "ctrl F" );
 		map.put( GENERATE_NAILS, "ctrl N" );
 
-		map.put( GENERATE_MAGIC_NAILS, "ctrl M" );
+		map.put( GENERATE_MAGIC_NAILS, "M" );
 
 		return inputMap;
 	}
