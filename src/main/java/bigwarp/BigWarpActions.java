@@ -1307,7 +1307,7 @@ public class BigWarpActions
 			long[] dimensions = new long[3];
 			rawMipmaps[0].dimensions(dimensions);
 
-			long[] regionMin = new long[]{dimensions[0] - 1, dimensions[1] - 1, dimensions[2] - 1};
+			long[] regionMin = new long[]{dimensions[0] - 1, dimensions[2] - 1, dimensions[1] - 1};
 			long[] regionMax = new long[]{0, 0, 0};
 
 			RandomAccess<FloatType> hmMinAccess = bw.getMinHeightmap().randomAccess();
