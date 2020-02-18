@@ -1375,7 +1375,7 @@ public class BigWarpActions
 					double[] features = getFeatureVector(trainNail, numMipmaps, receptiveFieldSize, mipmapAccess);
 
 					inputFeatures[n * nailStride + ztrain + magicZTraining] = features;
-					outputTarget[n * nailStride + ztrain] = ztrain / magicZTraining;
+					outputTarget[n * nailStride + ztrain + magicZTraining] = ztrain / magicZTraining;
 				}
 			}
 
