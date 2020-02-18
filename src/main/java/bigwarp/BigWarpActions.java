@@ -219,6 +219,7 @@ public class BigWarpActions
 		new ApplyFlattenAction( bw ).put( actionMap );
 		new ExportFlattenAction( bw ).put( actionMap );
 		new GenerateNailsAction( bw ).put( actionMap );
+		new GenerateMagicNailsAction( bw ).put( actionMap );
 
 		return actionMap;
 	}
