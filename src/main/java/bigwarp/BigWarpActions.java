@@ -1351,8 +1351,8 @@ public class BigWarpActions
 			System.out.println("Region max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
 			// Generate a quick training set
-			int numMipmaps = 4;
-			int receptiveFieldSize = 20;
+			int numMipmaps = 5;
+			int receptiveFieldSize = 50;
 
 			int numFeatures = numMipmaps * ( receptiveFieldSize * 2 + 1 );
 			int nailStride = (magicZTraining * 2 + 1);
