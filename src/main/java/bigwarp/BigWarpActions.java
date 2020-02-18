@@ -1392,7 +1392,7 @@ public class BigWarpActions
 			FunctionRandomAccessible<DoubleType>.FunctionRandomAccess solutionAccess = solutionRA.randomAccess();
 
 			// Place nails at all currently uncovered positions by using the SVD weights to adjust z-position of nails
-			long[] pos = new long[2];
+			long[] pos = new long[3];
 
 			System.out.println("Placing nail grid");
 			for(double x = regionMin[0]; x <= regionMax[0]; x += bw.getCostStep() ) {
