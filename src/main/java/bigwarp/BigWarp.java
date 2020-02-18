@@ -2241,7 +2241,11 @@ public class BigWarp< T >
 		this.scales = scales;
 	}
 
-	public void setName(String name) {
+    public double[][] getScales() {
+        return scales;
+    }
+
+    public void setName(String name) {
 		this.name = name;
 	}
 

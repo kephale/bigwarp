@@ -1269,6 +1269,7 @@ public class BigWarpActions
 
 	public static int magicXYPadding = 1;
 	public static int magicZTraining = 25;
+	public static long maxSteps = 100;
 	public static boolean magicIgnoreNails = false;
 
 	public static class GenerateMagicNailsAction extends AbstractNamedAction
@@ -1293,6 +1294,7 @@ public class BigWarpActions
 			GenericDialog gd = new GenericDialog("Magic nail grid dialog");
 			gd.addNumericField("X/Y padding radius:", magicXYPadding, 0);
 			gd.addNumericField("Z training radius:", magicZTraining, 0);
+			gd.addNumericField("Max steps:", maxSteps, 0);
 			gd.addMessage("");
 			gd.addCheckbox("Ignore nails for graph cut (WARNING!)", magicIgnoreNails );
 			gd.showDialog();
@@ -1300,6 +1302,7 @@ public class BigWarpActions
 			if (gd.wasCanceled()) return;
 			magicXYPadding = (int) gd.getNextNumber();
 			magicZTraining = (int) gd.getNextNumber();
+			maxSteps = (int) gd.getNextNumber();
 			magicIgnoreNails = gd.getNextBoolean();
 
 			// Find operating region
@@ -1351,7 +1354,7 @@ public class BigWarpActions
 			System.out.println("Region max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
 
 			// Generate a quick training set
-			int numMipmaps = 5;
+			int numMipmaps = 3;
 			int receptiveFieldSize = 50;
 
 			int numFeatures = numMipmaps * ( receptiveFieldSize * 2 + 1 );
@@ -1363,7 +1366,10 @@ public class BigWarpActions
 
 			RandomAccess<UnsignedByteType>[] mipmapAccess = new RandomAccess[numMipmaps];
 			for( int mipmap = 0; mipmap < numMipmaps; mipmap++ ){
-				mipmapAccess[mipmap] = Views.extendBorder(rawMipmaps[mipmap]).randomAccess();
+				System.out.println("mipmap: " + mipmap + " " + rawMipmaps[mipmap].dimension(0) + " " + rawMipmaps[mipmap].dimension(1) + " " + rawMipmaps[mipmap].dimension(2));
+				//mipmapAccess[mipmap] = Views.extendBorder(rawMipmaps[mipmap+1]).randomAccess();// FIXME skip s0 keep sretruning 0
+				//mipmapAccess[mipmap] = Views.permute(rawMipmaps[mipmap+1], 1, 2).randomAccess();// FIXME skip s0 keep sretruning 0
+				mipmapAccess[mipmap] = Views.extendBorder(Views.permute(rawMipmaps[mipmap+1], 1, 2)).randomAccess();// FIXME skip s0 keep sretruning 0
 			}
 
 			System.out.println("Generating training data");
@@ -1373,12 +1379,17 @@ public class BigWarpActions
 				for( int ztrain = -magicZTraining; ztrain <= magicZTraining; ztrain++ ) {
 					//double[] features = new double[numFeatures];
 					double[] trainNail = new double[]{nail[0], nail[1], nail[2] + ztrain};
-					double[] features = getFeatureVector(trainNail, numMipmaps, receptiveFieldSize, mipmapAccess);
 
+					double[] features = getFeatureVector(trainNail, numMipmaps, receptiveFieldSize, mipmapAccess, bw.getScales());
+
+					if( n == 0 )
+						System.out.println("Pos: " + Arrays.toString(trainNail) + " Target: " + (float)ztrain / (float)magicZTraining + " Training set: " + Arrays.toString(features));
 					inputFeatures[n * nailStride + ztrain + magicZTraining] = features;
-					outputTarget[n * nailStride + ztrain + magicZTraining] = ztrain / magicZTraining;
+					outputTarget[n * nailStride + ztrain + magicZTraining] = (float)ztrain / (float)magicZTraining;
 				}
 			}
+
+			//System.out.println("Test feature: " + Arrays.toString(getFeatureVector(new double[]{500, 500, 500}, numMipmaps, receptiveFieldSize, mipmapAccess)));
 
 			System.out.println("Solving SVD");
 			// Run SVD on the training set
@@ -1388,7 +1399,7 @@ public class BigWarpActions
 			RealVector solution = solver.solve(target);
 
 			// Make a FunctionRandomAccessibleInterval with the SVD solution
-			FunctionRandomAccessible<DoubleType> solutionRA = directionToSurface(numMipmaps, receptiveFieldSize, mipmapAccess, solution);
+			FunctionRandomAccessible<DoubleType> solutionRA = directionToSurface(numMipmaps, receptiveFieldSize, mipmapAccess, bw.getScales(), solution);
 			FunctionRandomAccessible<DoubleType>.FunctionRandomAccess solutionAccess = solutionRA.randomAccess();
 
 			// Place nails at all currently uncovered positions by using the SVD weights to adjust z-position of nails
@@ -1405,103 +1416,147 @@ public class BigWarpActions
 
 					hmAccess.setPosition(new long[]{(long) (x/bw.getCostStep()), (long) (y/bw.getCostStep())});
 
-					// Now use solution RAI to descend the pos[2] value until it changes sign
-					double solAbov;
-					double solHere;
-					double solBelo;
-
 					pos[2] = (long) hmAccess.get().get();
-					solutionAccess.setPosition(pos);
-					solHere = solutionAccess.get().get();
-
-					pos[2] = ((long) hmAccess.get().get()) + 1;
-					solutionAccess.setPosition(pos);
-					solAbov = solutionAccess.get().get();
-
-					pos[2] = ((long) hmAccess.get().get()) - 1;
-					solutionAccess.setPosition(pos);
-					solBelo = solutionAccess.get().get();
-
-					long lastPos = -1;
-
-					// Now continue in that direction as long as: position changes and this location is better than above and below
-					while( pos[2] != lastPos && ( solHere > solBelo || solHere > solAbov )) {
-						lastPos = pos[2];
-						if( solBelo < solAbov ) {// better below, then z--
-							solAbov = solHere;
-							solHere = solBelo;
-							pos[2]--;
-							solutionAccess.setPosition(pos);
-							solBelo = solutionAccess.get().get();
-						} else {// better abov then z++
-							solBelo = solHere;
-							solHere = solAbov;
-							pos[2]++;
-							solutionAccess.setPosition(pos);
-							solAbov = solutionAccess.get().get();
-						}
-					}
+					pos[2] = relaxHeightmap( pos, solutionAccess, (int) maxSteps);
 
 					double[] ptarrayLoc = new double[]{pos[0], pos[1] , pos[2]};
 					double[] ptBackLoc = new double[3];
 
 					bw.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
-					//BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);// TODO this was the previous
 					bw.addPoint(ptBackLoc, true, bw.viewerP);
-
-					// can use this to sanity check, but the P points need to be stored in transformed coords
-					//addPoint( ptarrayLoc, true, viewerP );
-
-					//System.out.println("Add grid point: " + ptarrayLoc[0] + " " + ptarrayLoc[1] + " " + ptarrayLoc[2]);
-
 					bw.addPoint(ptarrayLoc, false, bw.viewerQ);
-
 				}
 			}
 
 		}
 
-		static private double[] getFeatureVector(double[] nail, int numMipmaps, int receptiveFieldSize, RandomAccess<UnsignedByteType>[] mipmapAccess) {
+		private long relaxHeightmap(final long[] startPos, FunctionRandomAccessible<DoubleType>.FunctionRandomAccess solutionAccess, int maxSteps) {
+			// Now use solution RAI to descend the pos[2] value until it changes sign
+			double solAbov;
+			double solHere;
+			double solBelo;
+
+			long[] pos = Arrays.copyOf(startPos, 3);
+
+			pos[2] = startPos[2];
+			solutionAccess.setPosition(pos);
+			solHere = solutionAccess.get().get();
+
+			pos[2] = startPos[2] + 1;
+			solutionAccess.setPosition(pos);
+			solAbov = solutionAccess.get().get();
+
+			pos[2] = startPos[2] - 1;
+			solutionAccess.setPosition(pos);
+			solBelo = solutionAccess.get().get();
+
+			long lastPos = -1;
+			long numSteps = 0;
+
+			//System.out.println(x + " " + y + " " + solHere + " " + solAbov + " " + solBelo);
+
+			int prevDirection = 0;
+
+			// Now continue in that direction as long as: position changes and this location is better than above and below
+			while( pos[2] != lastPos && numSteps < maxSteps ) {
+				lastPos = pos[2];
+
+				if( solBelo < solHere && solHere < solAbov && solBelo > 0 ) {
+					// Then go down
+					solAbov = solHere;
+					solHere = solBelo;
+					pos[2]--;
+					solutionAccess.setPosition(pos);
+					solBelo = solutionAccess.get().get();
+					prevDirection = -1;
+				} else if( solAbov > solHere && solHere > solBelo && solAbov < 0 ) {
+					// Then go up
+					solBelo = solHere;
+					solHere = solAbov;
+					pos[2]++;
+					solutionAccess.setPosition(pos);
+					solAbov = solutionAccess.get().get();
+					prevDirection = 1;
+				} else if( solBelo < 0 && solHere < 0 && solAbov < 0 ) {
+					// Then go up
+					solBelo = solHere;
+					solHere = solAbov;
+					pos[2]++;
+					solutionAccess.setPosition(pos);
+					solAbov = solutionAccess.get().get();
+					prevDirection = 1;
+				} else if( solBelo > 0 && solHere > 0 && solAbov > 0) {
+					// Then go down
+					solAbov = solHere;
+					solHere = solBelo;
+					pos[2]--;
+					solutionAccess.setPosition(pos);
+					solBelo = solutionAccess.get().get();
+					prevDirection = -1;
+				} else {
+					prevDirection = 0;
+				}
+
+				numSteps++;
+			}
+
+			System.out.println(startPos[0] + " " + startPos[1] + " : " + solBelo + " " + solHere + " " + solAbov + " numsteps: " + numSteps );
+			return pos[2];
+		}
+
+		static private double[] getFeatureVector(double[] nail, int numMipmaps, int receptiveFieldSize, RandomAccess<UnsignedByteType>[] mipmapAccess, double[][] scales) {
 			int numFeatures = numMipmaps * ( receptiveFieldSize * 2 + 1 );
 			double[] features = new double[numFeatures];
 
 			long[] pos = new long[]{(long) nail[0], (long) nail[1], (long) nail[2]};
 
+			//System.out.println("pos: " + pos[0] + " " + pos[1] + " " + pos[2]);
 			for(int dz = -receptiveFieldSize; dz <= receptiveFieldSize; dz++ ){
+				pos[2] = (long) (nail[2] + dz);
 				for( int mipmap = 0; mipmap < numMipmaps; mipmap++ ) {
 					int idx = (dz + receptiveFieldSize) * numMipmaps + mipmap;
-					mipmapAccess[mipmap].setPosition(pos);
+					//long[] mipmapPos = new long[]{Math.round(nail[0] / scales[mipmap][0]), Math.round(nail[1] / scales[mipmap][1]), pos[2]};
+					long[] mipmapPos = new long[]{Math.round(nail[0] * 0.5), Math.round(nail[1] * 0.5), Math.round(pos[2] * 0.5)};// FIXME hard coding to handle screen space
+					mipmapAccess[mipmap].setPosition(mipmapPos);
 					features[idx] = mipmapAccess[mipmap].get().get();
+					//if( idx < 2 ) System.out.println("idx: " + idx + " val: " + features[idx]);
 				}
 			}
 			return features;
 		}
 
-		static private double[] getFeatureVector(Localizable nail, int numMipmaps, int receptiveFieldSize, RandomAccess<UnsignedByteType>[] mipmapAccess) {
+		static private double[] getFeatureVector(Localizable nail, int numMipmaps, int receptiveFieldSize, RandomAccess<UnsignedByteType>[] mipmapAccess, double[][] scales) {
 			return getFeatureVector(
 					new double[]{nail.getDoublePosition(0), nail.getDoublePosition(1), nail.getDoublePosition(2)},
 					numMipmaps,
 					receptiveFieldSize,
-					mipmapAccess);
+					mipmapAccess,
+					scales);
 		}
 
 		public static final FunctionRandomAccessible<DoubleType> directionToSurface(
 			final int numMipmaps,
 			final int receptiveFieldSize,
 			final RandomAccess<UnsignedByteType>[] mipmapAccess,
+			final double[][] scales,
 			final RealVector solution) {
 
 			double[] solutionArray = solution.toArray();
+			System.out.println("Direction to surface:  " + Arrays.toString(solutionArray));
+
 
 			return new FunctionRandomAccessible<>(
 					3,
 					(location, value) -> {
-						double[] features = getFeatureVector(location, numMipmaps, receptiveFieldSize, mipmapAccess);
+						double[] features = getFeatureVector(location, numMipmaps, receptiveFieldSize, mipmapAccess, scales);
 
 						double val = 0;
 						for( int fid = 0; fid < features.length; fid++ ) {
 							val += features[fid] * solutionArray[fid];
 						}
+
+						value.set(val);
+						//System.out.println("Pos: " + location.getDoublePosition(0) + " " + location.getDoublePosition(1) + " " + location.getDoublePosition(2) + " Feature vector: " + Arrays.toString(features) + " Result val: " + val);
 					},
 					DoubleType::new);
 		}
