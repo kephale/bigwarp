@@ -1403,7 +1403,7 @@ public class BigWarpActions
 
 					// TODO: skip existing nails use a list, remove nails from list once checked against
 
-					hmAccess.setPosition(pos);
+					hmAccess.setPosition(new long[]{(long) (x/bw.getCostStep()), (long) (y/bw.getCostStep())});
 
 					// Now use solution RAI to descend the pos[2] value until it changes sign
 					double solAbov;
