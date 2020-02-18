@@ -547,6 +547,15 @@ public class NailFlat implements Callable<Void> {
 
 		ProgressWriterIJ progress = new ProgressWriterIJ();
 
+//		options =
+//
+//		public BigWarpViewerOptions( final boolean is2d )
+//		{
+//			this.is2d = is2d;
+//			this.screenScales(new double[] {0.5});
+//			this.numRenderingThreads(12);
+//		}
+
 		@SuppressWarnings( "unchecked" )
 		BigWarp bw = new BigWarp( bwData, n5.getBasePath(), progress );
 

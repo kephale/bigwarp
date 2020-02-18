@@ -2221,7 +2221,15 @@ public class BigWarp< T >
 		this.maxHeightmap = max;
 	}
 
-	public void setCost(RandomAccessibleInterval<DoubleType> cost) {
+    public RandomAccessibleInterval<FloatType> getMinHeightmap() {
+        return minHeightmap;
+    }
+
+    public RandomAccessibleInterval<FloatType> getMaxHeightmap() {
+        return maxHeightmap;
+    }
+
+    public void setCost(RandomAccessibleInterval<DoubleType> cost) {
 		this.cost = cost;
 	}
 
@@ -2324,6 +2332,9 @@ public class BigWarp< T >
 
 	public RandomAccessibleInterval<FloatType> getCorrespondingHeightmap(Double z) {
 		long offset;
+
+
+		// FIXME: this should test distance from minmean and maxmean
 		if (z > (float) (cost.dimension(2)) / 2.0 && z > (float) (cost.dimension(2)) / 2.0) {
 			// Max heightmap
 			return maxHeightmap;
@@ -2331,6 +2342,35 @@ public class BigWarp< T >
 			return minHeightmap;
 		}
 	}
+
+	public RandomAccessibleInterval<FloatType> getCorrespondingHeightmap(Double[] pos) {
+	    // expects pos in global coords
+
+        // Test which heightmap is closest at the middle of the nailing region
+        long testX = pos[0].longValue();
+        long testY = pos[1].longValue();
+
+        RandomAccess<FloatType> hmMinAccess = minHeightmap.randomAccess();
+        RandomAccess<FloatType> hmMaxAccess = maxHeightmap.randomAccess();
+
+        long[] testPos = new long[]{testX / getCostStep(), testY / getCostStep()};
+
+        hmMinAccess.setPosition(testPos);
+        float testHmMin = hmMinAccess.get().get();
+        float distToMin = (float) Math.abs(testHmMin - pos[2]);
+
+        hmMaxAccess.setPosition(testPos);
+        float testHmMax = hmMaxAccess.get().get();
+        float distToMax = (float) Math.abs(testHmMax - pos[2]);
+
+        if (distToMin > distToMax) {
+            // Max heightmap
+            return maxHeightmap;
+        } else {
+            // Min heightmap
+            return minHeightmap;
+        }
+    }
 
 	public int getCostStepData() {
 		return this.costStepData;
@@ -3547,7 +3587,11 @@ public class BigWarp< T >
 
 								System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
 
+//                                RandomAccessibleInterval<FloatType> heightmap = bw.getCorrespondingHeightmap(nails.get(k));
+//                                RandomAccess<FloatType> hmAccess = heightmap.randomAccess();
+
 								hmMinAccess.setPosition(nail);
+								hmMaxAccess.setPosition(nail);
 								double hmMinZ = hmMinAccess.get().get();
 								double hmMaxZ = hmMaxAccess.get().get();
 
@@ -3945,7 +3989,7 @@ public class BigWarp< T >
 
 	}
 
-	private RandomAccessibleInterval<DoubleType> getCostImg() {
+	public RandomAccessibleInterval<DoubleType> getCostImg() {
 		return cost;
 	}
 

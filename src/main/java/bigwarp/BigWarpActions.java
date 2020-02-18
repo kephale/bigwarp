@@ -4,6 +4,7 @@ import java.awt.Component;
 import java.awt.event.ActionEvent;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 
 import javax.swing.ActionMap;
 import javax.swing.InputMap;
@@ -13,11 +14,14 @@ import javax.swing.KeyStroke;
 import javax.swing.table.TableCellEditor;
 
 import ij.gui.GenericDialog;
+import net.imglib2.Localizable;
 import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessibleInterval;
-import net.imglib2.RealPoint;
+import net.imglib2.position.FunctionRandomAccessible;
+import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
+import org.apache.commons.math3.linear.*;
 import org.scijava.ui.behaviour.KeyStrokeAdder;
 import org.scijava.ui.behaviour.util.AbstractNamedAction;
 import org.scijava.ui.behaviour.util.InputActionBindings;
@@ -97,6 +101,7 @@ public class BigWarpActions
 	public static final String APPLY_FLATTEN = "apply flatten";
 	public static final String EXPORT_FLATTEN = "export flatten";
 	public static final String GENERATE_NAILS = "generate nails";
+	public static final String GENERATE_MAGIC_NAILS = "generate magic nails";
 
 	/**
 	 * Create BigWarp actions and install them in the specified
@@ -1255,6 +1260,246 @@ public class BigWarpActions
 				}
 			}
 
+		}
+	}
+
+	public static int magicXYPadding = 1;
+	public static int magicZTraining = 25;
+	public static boolean magicIgnoreNails = false;
+
+	public static class GenerateMagicNailsAction extends AbstractNamedAction
+	{
+//		private static final long serialVersionUID = 4965249994677649713L;
+
+		BigWarp bw;
+		public GenerateMagicNailsAction( final BigWarp bw )
+		{
+			super( GENERATE_MAGIC_NAILS );
+			this.bw = bw;
+		}
+		@Override
+		public void actionPerformed(ActionEvent e)
+		{
+			// Grab all nails
+			List<Double[]> nails = bw.landmarkModel.getPoints(false);
+
+			// Get user input
+			System.out.println("Generating magic nail grid");
+
+			GenericDialog gd = new GenericDialog("Magic nail grid dialog");
+			gd.addNumericField("X/Y padding radius:", magicXYPadding, 0);
+			gd.addNumericField("Z training radius:", magicZTraining, 0);
+			gd.addMessage("");
+			gd.addCheckbox("Ignore nails for graph cut (WARNING!)", magicIgnoreNails );
+			gd.showDialog();
+
+			if (gd.wasCanceled()) return;
+			magicXYPadding = (int) gd.getNextNumber();
+			magicZTraining = (int) gd.getNextNumber();
+			magicIgnoreNails = gd.getNextBoolean();
+
+			// Find operating region
+			RandomAccessibleInterval<UnsignedByteType>[] rawMipmaps = bw.getRawMipmaps();
+
+			long[] dimensions = new long[3];
+			rawMipmaps[0].dimensions(dimensions);
+
+			long[] regionMin = new long[]{dimensions[0] - 1, dimensions[1] - 1, dimensions[2] - 1};
+			long[] regionMax = new long[]{0, 0, 0};
+
+			RandomAccess<FloatType> hmMinAccess = bw.getMinHeightmap().randomAccess();
+			RandomAccess<FloatType> hmMaxAccess = bw.getMaxHeightmap().randomAccess();
+
+			// FIXME: this assumes the all nails are related to the same heightmap and that the first nail will be representative
+			RandomAccessibleInterval heightmap = bw.getCorrespondingHeightmap(nails.get(0));
+			RandomAccess<FloatType> hmAccess = heightmap.randomAccess();
+
+			// Look at all current nails and determine the region for solving (specifically w.r.t. z-axis), cover the entire range between nail and heightmap
+			for (int k = 0; k < nails.size(); k++) {
+				Double[] nail = nails.get(k);
+				Double x = nail[0];
+				Double y = nail[1];
+
+				long[] gridNail = new long[]{
+						Math.round(x / bw.getCostStep()),
+						Math.round(y / bw.getCostStep()),
+						nails.get(k)[2].longValue()};
+
+				System.out.println("Nail at: " + nail[0] + " " + nail[1] + " " + nail[2]);
+
+				hmAccess.setPosition(gridNail);
+				float hmVal = hmAccess.get().get();
+
+				regionMin[0] = (long) Math.min( x, regionMin[0] );
+				regionMin[1] = (long) Math.min( y, regionMin[1] );
+				regionMin[2] = (long) Math.min( nails.get(k)[2], Math.min( hmVal, regionMin[2] ) );
+
+				regionMax[0] = (long) Math.max( x, regionMax[0] );
+				regionMax[1] = (long) Math.max( y, regionMax[1] );
+				regionMax[2] = (long) Math.max( nails.get(k)[2], Math.max( hmVal, regionMax[2] ) );
+			}
+
+			// snap to grid
+			regionMin[0] = Math.round(regionMin[0] / bw.getCostStep()) * bw.getCostStep();
+			regionMin[1] = Math.round(regionMin[1] / bw.getCostStep()) * bw.getCostStep();
+
+			System.out.println("Region min: " + regionMin[0] + " " + regionMin[1] + " " + regionMin[2]);
+			System.out.println("Region max: " + regionMax[0] + " " + regionMax[1] + " " + regionMax[2]);
+
+			// Generate a quick training set
+			int numMipmaps = 4;
+			int receptiveFieldSize = 20;
+
+			int numFeatures = numMipmaps * ( receptiveFieldSize * 2 + 1 );
+			int nailStride = (magicZTraining * 2 + 1);
+			int numTrainingPoints = nails.size() * nailStride;
+
+			double[][] inputFeatures = new double[numTrainingPoints][numFeatures];
+			double[] outputTarget = new double[numTrainingPoints];
+
+			RandomAccess<UnsignedByteType>[] mipmapAccess = new RandomAccess[numMipmaps];
+			for( int mipmap = 0; mipmap < numMipmaps; mipmap++ ){
+				mipmapAccess[mipmap] = rawMipmaps[mipmap].randomAccess();
+			}
+
+			System.out.println("Generating training data");
+
+			for( int n = 0; n < nails.size(); n++ ){
+				Double[] nail = nails.get(n);
+				for( int ztrain = -magicZTraining; ztrain <= magicZTraining; ztrain++ ) {
+					//double[] features = new double[numFeatures];
+
+					double[] features = getFeatureVector(nail, numMipmaps, receptiveFieldSize, mipmapAccess);
+
+					inputFeatures[n * nailStride + ztrain] = features;
+					outputTarget[n * nailStride + ztrain] = ztrain / magicZTraining;
+				}
+			}
+
+			System.out.println("Solving SVD");
+			// Run SVD on the training set
+			Array2DRowRealMatrix coefficients = new Array2DRowRealMatrix(inputFeatures, false);
+			DecompositionSolver solver = new SingularValueDecomposition(coefficients).getSolver();
+			ArrayRealVector target = new ArrayRealVector(outputTarget, false);
+			RealVector solution = solver.solve(target);
+
+			// Make a FunctionRandomAccessibleInterval with the SVD solution
+			FunctionRandomAccessible<DoubleType> solutionRA = directionToSurface(numMipmaps, receptiveFieldSize, mipmapAccess, solution);
+			FunctionRandomAccessible<DoubleType>.FunctionRandomAccess solutionAccess = solutionRA.randomAccess();
+
+			// Place nails at all currently uncovered positions by using the SVD weights to adjust z-position of nails
+			long[] pos = new long[2];
+
+			System.out.println("Placing nail grid");
+			for(double x = regionMin[0]; x <= regionMax[0]; x += bw.getCostStep() ) {
+				pos[0] = (long) x;
+				System.out.println("X: " + x);
+				for(double y = regionMin[1]; y <= regionMax[1]; y += bw.getCostStep()) {
+					pos[1] = (long) y;
+
+					// TODO: skip existing nails use a list, remove nails from list once checked against
+
+					hmAccess.setPosition(pos);
+
+					// Now use solution RAI to descend the pos[2] value until it changes sign
+					double solAbov;
+					double solHere;
+					double solBelo;
+
+					pos[2] = (long) hmAccess.get().get();
+					solutionAccess.setPosition(pos);
+					solHere = solutionAccess.get().get();
+
+					pos[2] = ((long) hmAccess.get().get()) + 1;
+					solutionAccess.setPosition(pos);
+					solAbov = solutionAccess.get().get();
+
+					pos[2] = ((long) hmAccess.get().get()) - 1;
+					solutionAccess.setPosition(pos);
+					solBelo = solutionAccess.get().get();
+
+					long lastPos = -1;
+
+					// Now continue in that direction as long as: position changes and this location is better than above and below
+					while( pos[2] != lastPos && ( solHere > solBelo || solHere > solAbov )) {
+						lastPos = pos[2];
+						if( solBelo < solAbov ) {// better below, then z--
+							solAbov = solHere;
+							solHere = solBelo;
+							pos[2]--;
+							solutionAccess.setPosition(pos);
+							solBelo = solutionAccess.get().get();
+						} else {// better abov then z++
+							solBelo = solHere;
+							solHere = solAbov;
+							pos[2]++;
+							solutionAccess.setPosition(pos);
+							solAbov = solutionAccess.get().get();
+						}
+					}
+
+					double[] ptarrayLoc = new double[]{pos[0], pos[1] , pos[2]};
+					double[] ptBackLoc = new double[3];
+
+					bw.currentTransform.inverse().apply(ptarrayLoc, ptBackLoc);
+					//BigWarp.this.currentTransform.apply(ptarrayLoc, ptBackLoc);// TODO this was the previous
+					bw.addPoint(ptBackLoc, true, bw.viewerP);
+
+					// can use this to sanity check, but the P points need to be stored in transformed coords
+					//addPoint( ptarrayLoc, true, viewerP );
+
+					//System.out.println("Add grid point: " + ptarrayLoc[0] + " " + ptarrayLoc[1] + " " + ptarrayLoc[2]);
+
+					bw.addPoint(ptarrayLoc, false, bw.viewerQ);
+
+				}
+			}
+
+		}
+
+		static private double[] getFeatureVector(Double[] nail, int numMipmaps, int receptiveFieldSize, RandomAccess<UnsignedByteType>[] mipmapAccess) {
+			int numFeatures = numMipmaps * ( receptiveFieldSize * 2 + 1 );
+			double[] features = new double[numFeatures];
+
+			long[] pos = new long[]{nail[0].longValue(), nail[1].longValue(), nail[2].longValue()};
+
+			for(int dz = -receptiveFieldSize; dz <= receptiveFieldSize; dz++ ){
+				for( int mipmap = 0; mipmap < numMipmaps; mipmap++ ) {
+					int idx = (dz + receptiveFieldSize) * numMipmaps + mipmap;
+					mipmapAccess[mipmap].setPosition(pos);
+					features[idx] = mipmapAccess[mipmap].get().get();
+				}
+			}
+			return features;
+		}
+
+		static private double[] getFeatureVector(Localizable nail, int numMipmaps, int receptiveFieldSize, RandomAccess<UnsignedByteType>[] mipmapAccess) {
+			return getFeatureVector(
+					new Double[]{nail.getDoublePosition(0), nail.getDoublePosition(1), nail.getDoublePosition(2)},
+					numMipmaps,
+					receptiveFieldSize,
+					mipmapAccess);
+		}
+
+		public static final FunctionRandomAccessible<DoubleType> directionToSurface(
+			final int numMipmaps,
+			final int receptiveFieldSize,
+			final RandomAccess<UnsignedByteType>[] mipmapAccess,
+			final RealVector solution) {
+
+			double[] solutionArray = solution.toArray();
+
+			return new FunctionRandomAccessible<>(
+					3,
+					(location, value) -> {
+						double[] features = getFeatureVector(location, numMipmaps, receptiveFieldSize, mipmapAccess);
+
+						double val = 0;
+						for( int fid = 0; fid < features.length; fid++ ) {
+							val += features[fid] * solutionArray[fid];
+						}
+					},
+					DoubleType::new);
 		}
 	}
 
