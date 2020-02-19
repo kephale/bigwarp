@@ -181,8 +181,9 @@ public class NailFlat implements Callable<Void> {
     static String[] argsSec15 = new String[]{
             "-i", "/nrs/flyem/tmp/VNC.n5",
             "-d", "/zcorr/Sec15___20200205_113313",
-            "-s", "/cost/Sec15_20200208_102958",
-            "--heightmaps", "/heightfields/Sec15_20200208_102958/s1"
+            "-s", "/cost/Sec15_20200218_2015",
+            "-f", "/heightfields/Sec15_20200219_1046_s1_kh1",
+            "--heightmaps", "/heightfields/Sec15_20200219_1046_s1_kh0"
     };
 
     static String[] argsSec16 = new String[]{
@@ -296,7 +297,7 @@ public class NailFlat implements Callable<Void> {
 
 	public static final void main(String... args) {
 
-		if( args.length == 0 ) args = argsSec14;
+		if( args.length == 0 ) args = argsSec15;
 
 
 //			args = new String[]{
